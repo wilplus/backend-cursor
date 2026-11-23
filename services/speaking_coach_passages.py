@@ -225,7 +225,8 @@ def _cosine(a: list[float], b: list[float]) -> float:
 
 
 def rank_evidence(evidence: tuple[Evidence, ...], question: str, limit: int, *,
-                  scoped: bool, user_id: str | None) -> tuple[tuple[Evidence, ...], bool]:
+                  scoped: bool, user_id: str | None,
+                  comparison_takes: tuple[str, ...] = ()) -> tuple[tuple[Evidence, ...], bool]:
     slide, section = requested_passage(question)
     terms = _terms(question)
     sources = _sources_for_slide(evidence, slide)
@@ -244,8 +245,13 @@ def rank_evidence(evidence: tuple[Evidence, ...], question: str, limit: int, *,
         scored = [(item, _lexical(item, terms, section) + 7 * _cosine(vectors[0], vector))
                   for item, vector in zip(shortlisted, vectors[1:])]
         ranked = [item for item, _ in sorted(scored, key=lambda pair: pair[1], reverse=True)]
-        return tuple((scoped_setup + ranked + supplemental)[:limit]), True
-    return tuple((scoped_setup + ranked + supplemental)[:limit]), False
+    required = [
+        next((item for item in ranked if item.source_type in ("take_transcript", "delivery_cues")
+              and any(source.take_id == take for source in item.sources)), None)
+        for take in comparison_takes
+    ]
+    ordered = dict.fromkeys([*filter(None, required), *scoped_setup, *ranked, *supplemental])
+    return tuple(ordered)[:limit], bool(vectors and len(vectors) == len(shortlisted) + 1)
 
 
 def _sources_for_slide(evidence: tuple[Evidence, ...], slide: int | None) -> list[Evidence]:

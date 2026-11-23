@@ -200,6 +200,9 @@ def validate_lounge_batch(body: Any) -> list[dict]:
                 f"messages[{i}].metadata: must be an object or null"
             )
 
+        if metadata and "coach_wording_saved" in metadata:
+            raise LoungeValidationError("Saved wording must use the project save action")
+
         cca = m.get("client_created_at")
         if _parse_iso(cca) is None:
             raise LoungeValidationError(

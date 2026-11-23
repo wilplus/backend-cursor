@@ -448,3 +448,22 @@ def test_foreign_and_withdrawn_takes_cannot_enter_project_context():
     with patch("services.project_deletion.ProjectDeletionService.archived_projects", return_value={ARC}):
         with pytest.raises(project_chat.ProjectChatNotFound):
             project_chat.build_context(database, USER, ARC)
+
+
+def test_coaching_advice_contains_the_actual_line_and_uses_the_project_scope():
+    database = FakeDB(audience="the team", goal="find someone to lead the pilot")
+    result = _config_result("Zakończ jednym pytaniem.")
+    result.parsed = {"answer": "Zakończ jednym pytaniem.", "wording": {
+        "words": "Jeśli dostaniemy zgodę, kto z was chciałby poprowadzić pilotaż?",
+        "arc_id": OTHER_ARC, "take_session_id": "foreign",
+    }}
+    with patch("services.llm.chat_complete", return_value=result):
+        response, _ = project_chat.answer(
+            database, USER, ARC, "Jak mogę to powiedzieć zespołowi?", take_session_id=TAKE,
+            review_focus={"step": "feedback"},
+        )
+    wording = response["row_metadata"]["coach_wording"]
+    assert wording == {
+        "words": "Jeśli dostaniemy zgodę, kto z was chciałby poprowadzić pilotaż?",
+        "arc_id": ARC, "take_session_id": TAKE,
+    }

@@ -193,14 +193,17 @@ def _project_chat(inp: dict) -> dict:
         review_focus=inp.get("focus", {"step": "feedback", "snippet_id": "opening"}),
     )
     metadata = reply["row_metadata"]
-    return {
+    output = {
         "answer": reply["answer"], "moment": (metadata.get("coach_moment") or {}).get("snippet_id"),
         "practise": bool((metadata.get("coach_moment") or {}).get("practise")),
         "destination": (metadata.get("review_destination") or {}).get("step"),
     }
+    if inp.get("include_wording"):
+        output["wording"] = metadata.get("coach_wording")
+    return output
 
 
-def _speaking_coach(inp: dict) -> str | None:
+def _speaking_coach(inp: dict) -> str | dict | None:
     """Run the shipped coach over a synthetic Take and saved delivery cues."""
     from services.speaking_coach import answer, invalidate
 
@@ -230,10 +233,22 @@ def _speaking_coach(inp: dict) -> str | None:
             "transcript": inp["transcript"],
             "metrics": {"vocal_cues": inp["vocal_cues"]},
         })
+    projects = {arc_id: [take]}
+    transcripts = {take_id: transcript}
+    if previous := inp.get("previous_recording"):
+        earlier = {**take, "id": "earlier-take", "arc_id": "earlier-project",
+                   "created_at": "2026-01-01T00:00:00Z",
+                   "intake_context": {"topic": previous["project_title"]}}
+        projects["earlier-project"] = [earlier]
+        transcripts[earlier["id"]] = {
+            "id": earlier["id"], "user_id": user_id,
+            "slide_transcripts": [{"index": 0, "transcript": previous["transcript"]}],
+        }
     takes = SimpleNamespace(
-        list_user_arc_sessions=lambda owner: [take] if owner == user_id else [],
-        get_arc_sessions_many=lambda arcs: {arc_id: [take]} if arc_id in arcs else {},
-        get_slide_transcripts_many=lambda ids: {take_id: transcript} if take_id in ids else {},
+        list_user_arc_sessions=lambda owner: [row for rows in projects.values() for row in rows]
+        if owner == user_id else [],
+        get_arc_sessions_many=lambda arcs: {arc: projects[arc] for arc in arcs if arc in projects},
+        get_slide_transcripts_many=lambda ids: {id_: transcripts[id_] for id_ in ids if id_ in transcripts},
     )
     database = SimpleNamespace(
         client=None, takes=takes,
@@ -244,8 +259,14 @@ def _speaking_coach(inp: dict) -> str | None:
     invalidate(user_id)
     reply = answer(database, user_id, inp["question"], history=inp.get("history"),
                    app_config=SimpleNamespace(SPEAKING_COACH_ENABLED=True))
+    if not reply:
+        return None
     # Provenance links are appended after the generated answer.
-    return reply[0]["answer"].partition("\n\n")[0] if reply else None
+    answer_text = reply[0]["answer"].partition("\n\n")[0]
+    if inp.get("include_wording"):
+        meta = reply[0].get("row_metadata") or {}
+        return {"answer": answer_text, "wording": meta.get("coach_wording"), "moment": meta.get("coach_moment")}
+    return answer_text
 
 
 ADAPTERS: dict[str, Callable[[dict], Any]] = {

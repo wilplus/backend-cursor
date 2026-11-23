@@ -117,6 +117,28 @@ def v2_take_review_runs(arc_id):
     return jsonify({"runs": take_review_history.practice_runs(db, actor, str(arc_id), take_ids)})
 
 
+@v2_bp.route("/explore/arc/<arc_id>/coach-wording", methods=["GET", "POST"])
+@require_auth
+def v2_explore_coach_wording(arc_id):
+    from routes.v2.common import _is_valid_uuid
+    from services import coach_wording
+
+    owned, sessions = _arc_owned_by_caller(arc_id)
+    if not owned:
+        return jsonify({"code": "NOT_FOUND"}), 404
+    user, arc = str(request.user_id), str(arc_id)
+    if request.method == "POST":
+        body = request.get_json(silent=True)
+        reply_id = body.get("reply_id") if isinstance(body, dict) else None
+        if not _is_valid_uuid(reply_id):
+            return jsonify({"code": "INVALID_INPUT"}), 400
+        payload, status = coach_wording.save(db, user, arc, sessions, reply_id)
+        return jsonify(payload), status
+    response = jsonify({"items": coach_wording.read(db, user, arc, sessions)})
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
 @v2_bp.route("/explore/arc/<arc_id>/review/notes/<take_id>", methods=["GET", "PUT"])
 @require_auth
 def v2_take_review_notes(arc_id, take_id):

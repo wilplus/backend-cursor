@@ -24,6 +24,7 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Any, Optional
 
+from services import coach_wording
 from services.content_language import (
     complete_in_language,
     recording_target_language,
@@ -874,7 +875,7 @@ Do not bring an earlier setup question into this exchange.
 
 Return strict JSON with this shape:
 {"answer": string, "chips": [string], "moment": string or null, "practise": boolean,
- "next_review_step": "practise" or "ideal" or null}
+ "next_review_step": "practise" or "ideal" or null, "wording": object or null}
 Keep the answer short and conversational. Use a published moment reference
 only when the answer actually addresses that passage. Use "reviewed" for the
 exact clip in speaker_is_reviewing when it is the one you address, and null
@@ -1126,7 +1127,7 @@ def _model_turn(
     if review:
         prompt["speaker_is_reviewing"] = review
     user_prompt = json.dumps(prompt, ensure_ascii=False, sort_keys=True)
-    system = _SYSTEM + f"\nRequested tone: {_tone(question)}."
+    system = _SYSTEM + "\n" + coach_wording.WORDING_RULES + f"\nRequested tone: {_tone(question)}."
     started = time.perf_counter()
     try:
         from services import llm
@@ -1223,7 +1224,7 @@ def _answer_signed_will(
         model=getattr(result, "model", None),
         model_ms=getattr(result, "duration_ms", model_ms),
         captured_slots=captured,
-        extra_metadata=meta,
+        extra_metadata={**meta, **_answer_metadata(refreshed, question, parsed if model_answer else None, None)},
     )
 
 
@@ -1301,6 +1302,10 @@ def _answer_metadata(context: ProjectChatContext, question: str,
     metadata = {"review_focus": anchor} if anchor else {}
     if not parsed:
         return metadata
+    wording = coach_wording.proposal(parsed.get("wording"), arc_id=context.arc_id,
+                                     take_id=context.take_session_id)
+    if wording:
+        metadata[coach_wording.META] = wording
     reference = parsed.get("moment")
     snippet = next((
         item.get("snippet_id")

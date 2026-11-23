@@ -19,7 +19,11 @@ O5  A source change, explicit invalidation or TTL expiry refreshes the derived
   O8  Similar talks require a clear choice, and comparable passages stay on the same slide.
   O9  When feedback is missing, the coach uses available passages and one relevant reviewed exercise.
   O10 Saved vocal observations reach the coach with the exact spoken passage from the selected Take.
-PROVES   O1 -> test_routes_without_an_llm_classifier
+  O11 A comparison uses the two requested recent Takes. Its wording belongs to the intended project.
+  O12 A missing clip can receive a speakable example with a delivery direction from words alone.
+PROVES   O11 -> test_last_two_recordings_get_one_sayable_line_for_its_target_project
+         O12 -> test_missing_audio_can_offer_the_words_and_an_example_delivery
+         O1 -> test_routes_without_an_llm_classifier
          O2 -> test_sparse_and_rich_contexts_are_explicit
          O3 -> test_rich_context_is_owner_scoped_and_has_no_project_chat
          O4 -> test_content_language_is_preserved_for_english_and_polish
@@ -661,3 +665,54 @@ def test_missing_feedback_uses_one_relevant_library_exercise():
         )
     assert result is not None and "Pause after your request." in result[0]["answer"]
 
+
+
+def test_last_two_recordings_get_one_sayable_line_for_its_target_project():
+    speaking_coach.clear_cache()
+    pitch = _named_take("Board pitch", "board", 1, "2026-11-20", "I’m asking for approval today.")
+    demo = _named_take("Demo", "demo", 2, "2026-11-21", "I think we could maybe start the pilot with support.")
+    old = _named_take("Demo", "demo", 1, "2026-11-19", "Old wording outside the comparison.")
+    database = _saved_projects(pitch, demo, old)
+
+    def generate(**kwargs):
+        prompt = kwargs["system"]
+        assert "I’m asking for approval today." in prompt
+        assert "start the pilot with support." in prompt
+        assert "Old wording outside the comparison." not in prompt
+        source = _reference(prompt, "I think we could maybe")
+        return _result("In the demo, lead with the recommendation.", [source], wording={
+            "words": "I recommend we start the pilot with support.", "delivery": None, "source": source,
+            "arc_id": "a-model-cannot-choose-an-id",
+        })
+
+    with patch("services.llm.embed", return_value=None), patch("services.llm.chat_complete", generate):
+        result = speaking_coach.answer(database, USER,
+            "Across my last two recordings, what would make me sound more confident?", app_config=_config())
+    assert result is not None
+    assert result[0]["row_metadata"]["coach_wording"] == {
+        "words": "I recommend we start the pilot with support.",
+        "arc_id": "demo", "take_session_id": demo["id"],
+    }
+
+
+def test_missing_audio_can_offer_the_words_and_an_example_delivery():
+    speaking_coach.clear_cache()
+    take = _named_take("Pilot", "pilot", 1, "2026-11-21", "Zacznijmy w piątek.")
+    database = _saved_projects(take)
+
+    def generate(**kwargs):
+        prompt = kwargs["system"]
+        assert "No recorded delivery observations are available" in prompt
+        source = _reference(prompt, "Zacznijmy w piątek.")
+        return _result("Z samych słów prośba jest jasna. Spróbuj tak.", [source], wording={
+            "words": "Zacznijmy w piątek.", "delivery": "Zrób krótką pauzę przed „w piątek”.", "source": source,
+        })
+
+    with patch("services.llm.embed", return_value=None), patch("services.llm.chat_complete", generate):
+        result = speaking_coach.answer(database, USER, "Czy na końcu brzmiałem pewnie?", app_config=_config())
+    assert result is not None
+    metadata = result[0]["row_metadata"]
+    assert "coach_moment" not in metadata
+    assert metadata["coach_wording"]["words"] == "Zacznijmy w piątek."
+    assert metadata["coach_wording"]["delivery"] == "Zrób krótką pauzę przed „w piątek”."
+    assert metadata["coach_wording"]["arc_id"] == "pilot"

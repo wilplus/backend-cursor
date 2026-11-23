@@ -11,10 +11,15 @@ _TALK = re.compile(
     r"\b(?:takes?|recordings?|talks?|presentations?|pitch(?:es)?|speech(?:es)?|projects?|"
     r"proba|proby|probie|nagranie|nagraniu|prezentacj\w*|wystapieni\w*|projekt\w*)\b"
     r"|\b(?:my|the|this|that|moj\w*|moim|tej|tym) (?:opening|ending|closing|poczatek|poczatku|zakonczeni\w*)\b"
+    r"|\b(?:at the end|na (?:samym )?koncu)\b"
 )
 _ACROSS_PROJECTS = re.compile(r"\b(?:across (?:all )?(?:my )?(?:projects|talks|presentations)|overall|"
                               r"all my (?:projects|talks|presentations)|ogolnie|wszystk\w* moj\w*)\b")
 _LATEST = re.compile(r"\b(?:latest|last|newest|most recent|ostatni\w*|najnowsz\w*)\b")
+_RECENT_PAIR = re.compile(
+    r"\b(?:last|latest|most recent) (?:two|2) (?:takes?|recordings?)\b"
+    r"|\bostatni(?:e|ch) (?:dwa|dwoch|2) nagrani\w*\b"
+)
 _FIRST = re.compile(r"\b(?:first|earliest|pierwsz\w*) (?:takes?|recordings?|prob\w*|nagrani\w*)\b")
 _COMPARE = re.compile(
     r"\b(?:compare|changed|improved|clearer|better|different|versus|vs|"
@@ -27,7 +32,7 @@ _TAKE_NUMBER = re.compile(
 )
 _SLIDE_NUMBER = re.compile(r"\b(?:slide|slajd\w*) (?:number |nr )?(\d{1,3})\b")
 _OPENING = re.compile(r"\b(?:opening|intro|introduction|beginning|poczat\w*|wstep\w*)\b")
-_ENDING = re.compile(r"\b(?:ending|closing|conclusion|call to action|zakoncz\w*|koncow\w*)\b")
+_ENDING = re.compile(r"\b(?:ending|closing|conclusion|at the end|call to action|zakoncz\w*|koncow\w*|na (?:samym )?koncu)\b")
 
 
 def normalize(text: str) -> str:
@@ -43,6 +48,7 @@ class TalkScope:
     first: bool = False
     latest: bool = False
     compare: bool = False
+    recent_pair: bool = False
 
 
 def requested_passage(question: str) -> tuple[int | None, str]:
@@ -94,7 +100,8 @@ def _request_for(arc: str, text: str) -> TalkScope:
     comparison = bool(_COMPARE.search(text)) or len(numbers) > 1
     latest = bool(_LATEST.search(text)) and (not numbers or comparison)
     compare = comparison or (first and latest)
-    return TalkScope(True, arc, numbers[:2], first, latest, compare)
+    recent_pair = bool(_RECENT_PAIR.search(text))
+    return TalkScope(True, arc, numbers[:2], first, latest, compare or recent_pair, recent_pair)
 
 
 def resolve_scope(rows: list[dict], question: str, history: list[dict]) -> tuple[TalkScope, str]:
@@ -111,6 +118,8 @@ def resolve_scope(rows: list[dict], question: str, history: list[dict]) -> tuple
         return _request_for(arc, normalize(query)), query
     if named:
         return TalkScope(requested=True), question
+    if _RECENT_PAIR.search(text):
+        return _request_for("", text), question
     if _ACROSS_PROJECTS.search(text):
         return TalkScope(), question
 
@@ -128,7 +137,7 @@ def resolve_scope(rows: list[dict], question: str, history: list[dict]) -> tuple
         if not (scope.take_numbers or scope.first or scope.latest):
             previous = _request_for(arc, prior_text)
             scope = replace(scope, take_numbers=previous.take_numbers, first=previous.first,
-                            latest=previous.latest)
+                            latest=previous.latest, compare=previous.compare, recent_pair=previous.recent_pair)
         return scope, query
     if not talk:
         return TalkScope(), question
