@@ -1277,6 +1277,14 @@ How an exercise is chosen for a moment, the whole rule in order: 35g-1.
     MLC-3 exercise service loop is retired (L8): its routes answer 410, its
     monitors are off, its tables stay.
 
+## Shared composer (N667)
+
+Chats, recording screens and practice use the same slots for files, text
+and microphone. Voice-only prompts disable text during the prompt and
+capture. The existing thread, membership, Take and processing permissions
+govern every send. Project drafts and pending turns retain their project and
+Take identifiers. See the frontend [shared composer](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md#shared-composer-n667).
+
 ## Non-negotiable provenance walls
 
 - Project identity never derives from display name, topic, deck hash, or

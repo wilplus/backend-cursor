@@ -556,7 +556,7 @@
   "when": "Will's chat opens for the first time",
   "then": [
    "four grey bubbles: \"Hi {name}, and welcome. We'd like to learn what you know and what you could teach others.\"; \"Your first Take is a short introduction: five questions, one slide each. Answer out loud, as you'd explain it to a friend. At the end, you'll get a few words on how you came across.\"; the Wozniak line; \"Record somewhere quiet, …\"",
-   "no question in the chat; the bar's middle is \"Start your first recording\"",
+   "the right-hand mic action is \"Start your first recording\"",
    "nothing of the notebook, the Sunday note or life goals shows while onboarded"
   ],
   "rules": [
@@ -908,16 +908,18 @@
   "given": "a Take is recording",
   "when": "the speaker looks at the screen",
   "then": [
-   "top bar: \"Take N · Slide n of m\" on the left, close on the right; no \"Recording\" label",
-   "the slide close under the bar, then every helper word in orange (none on Take 1); no slide dots",
-   "the strip: dot, clock, bar; under it \"Back\" (greyed on slide 1) and \"Next slide\"; on the last slide \"Finish take\", red, the only way to end"
+   "top bar: \"Take N · Slide n of m\" on the left, close on the right",
+   "the slide close under the bar, then any orange helper words (none on Take 1)",
+   "Back and Next slide above the composer. The timer and discard are in the center. The right slot enables Finish take on the last slide."
   ],
   "rules": [
    "recording-screens.md \"The flow\" 3",
-   "N70"
+   "N70",
+   "N667"
   ],
   "code": [
-   "fe:src/components/willab/LabOverlay.tsx::Finish take left it for the last slide",
+   "fe:src/components/willab/LabOverlay.tsx::export function RecordingPhase",
+   "fe:src/components/willab/chats/ChatComposer.tsx::function RecordingCenter",
    "fe:src/components/willab/recordingCopy.ts::nextSlide"
   ],
   "tests": [
@@ -1648,7 +1650,7 @@
   "status": "built",
   "screen": "walk.practise",
   "prototype": null,
-  "given": "the fix step's recorder (the one recording bar in the dock)",
+  "given": "the fix step uses the shared composer to record",
   "when": "the speaker tries",
   "then": [
    "a try that lands: \"Yes. That's it.\" and Next; one miss: \"Close. Once more.\" with \"Try it\" and Skip; two: \"Good try. Take it with you.\" and Next",
@@ -1659,12 +1661,13 @@
    "feedback-walk-and-chat.md C7",
    "ai-voice-practice.md §2 item 2",
    "N84",
-   "Never 1"
+   "Never 1",
+   "N667"
   ],
   "code": [
    "fe:src/components/willab/walk/useWalkPractise.ts::\"Close. Once more.\"",
    "be:services/practice_check.py",
-   "fe:src/components/willab/walk/RecordingStrip.tsx::export default function RecordingStrip"
+   "fe:src/components/willab/RecordingBar.tsx::export default function RecordingBar"
   ],
   "tests": [
    "src/components/willab/walk/walkPractise.test.tsx",
@@ -2029,7 +2032,7 @@
   "then": [
    "the speaker's recording with who hears it as one line under its player",
    "the pair: the \"Feedback walk\" bubble (\"🔒 Take N\" for an older Take, the date) and 3px under it the Take's Ideal Text card, both 80% wide, at most 384px",
-   "the chain after the Take ending on \"Good job. See you next time.\"; the bar's middle is \"Record Take N\""
+   "the chain after the Take ends on \"Good job. See you next time.\" The mic action is \"Record Take N\"."
   ],
   "rules": [
    "feedback-walk-and-chat.md B3, D4",
@@ -2109,14 +2112,14 @@
  {
   "id": "WILL-04",
   "area": "Will's chat",
-  "title": "The key line is said, in a small recording bar",
+  "title": "The key line is spoken in the shared composer",
   "status": "built",
   "screen": "will.after",
   "prototype": null,
   "given": "Will asks \"If {they} remember one sentence from you, what is it? Say it the way you'll say it.\"",
   "when": "the question waits",
   "then": [
-   "the bar's middle is \"Record your answer\" with \"Not now\" under the question; no \"Type your answer\"",
+   "the mic is \"Record your answer\" with \"Not now\" under the question. The text field is disabled for this answer.",
    "the tap records in the bar itself (the time, the bin, \"Stop\"): no recording screens, no slides; the words heard show as the speaker's bubble",
    "\"Not now\" gives the middle back to \"Record Take N\""
   ],
@@ -2232,28 +2235,28 @@
  {
   "id": "WILL-08",
   "area": "Will's chat",
-  "title": "Will's bar: the one thing to do now",
+  "title": "Speaking Coach uses the shared composer",
   "status": "built",
   "screen": "will.after",
   "prototype": null,
   "given": "Will's chat",
   "when": "the bar is drawn",
   "then": [
-   "the left is the stack, Your projects; no mic, no ✕ beside a record button",
-   "the middle is the first that holds: \"Type your answer\" when Will asks for words; \"Record your answer\" when he needs to hear you; else \"Record Take N\" (faded while processed) or \"Start your first recording\"",
-   "\"Continue review\" is gone; closing a walk any way leaves \"Record Take N\""
+   "Files on the left includes Your projects. The message field is in the middle and the mic is on the right.",
+   "The mic records the required spoken answer or opens the first or next Take.",
+   "Capture shows the timer and discard in the center and Stop in the mic slot."
   ],
   "rules": [
-   "N483 items 1, 2 and 7",
-   "N532",
-   "N498 item 2",
+   "N667",
    "feedback-walk-and-chat.md B14"
   ],
   "code": [
-   "fe:src/components/willab/Lounge.tsx::Feedback walk wears the outline; the bar offers no \"Continue review\""
+   "fe:src/components/willab/Lounge.tsx::function LoungeComposer",
+   "fe:src/components/willab/chats/ChatComposer.tsx::export default function ChatComposer"
   ],
   "tests": [
-   "src/components/willab/chats/chats.test.tsx"
+   "src/components/willab/chats/ChatComposer.test.tsx",
+   "src/components/willab/chats/loungePlace.test.tsx"
   ],
   "evals": []
  },
@@ -3646,20 +3649,21 @@
   "id": "CHAT-02",
   "area": "Chats with people",
   "title": "A chat with a person",
-  "status": "differs",
+  "status": "built",
   "screen": "chat.person",
   "prototype": null,
   "given": "a chat with a colleague",
   "when": "it opens",
   "then": [
-   "its own top bar (back, circle, name), the day and each message's time",
-   "the bar: the \"+\" on the left, 👍 👀 🙏 in the middle; no mic, no box, no typing",
-   "the \"+\" is a filled orange circle until you have asked anyone a question"
+   "The chat has its own header, dates and message times.",
+   "Files, text and mic stay put. The chat's supported formats determine which slots are enabled.",
+   "Thanks appear above the row after a person's recorded answer where typing is disabled."
   ],
   "rules": [
    "N483 items 3 and 4",
    "N298 item 4",
-   "customer-requests.md C1"
+   "customer-requests.md C1",
+   "N667"
   ],
   "code": [
    "fe:src/components/willab/chats/ChatThread.tsx::export default function ChatThread",
@@ -3669,10 +3673,11 @@
   ],
   "tests": [
    "src/components/willab/chats/chats.test.tsx",
-   "tests/test_the_bar.py"
+   "tests/test_the_bar.py",
+   "src/components/willab/chats/chatBar.test.tsx"
   ],
   "evals": [],
-  "note": "Replaced by N610 (10 November), the locked bar (docs/design/the-bar-2026-11-10/): two places, \"+\" and the one thing to do now. The three emoji leave the bar and become thanks taps above it, after a person's answer in a chat without typing; where the host's chat takes typing the middle is a box. The backend is merged (#1880: typing only where the host's recipe has it on; VIS-02). The frontend's bar (#1362) is not checked from this repo."
+  "note": "N667 defines the shared composer. The host's accepted formats determine which slots are active. Thanks remain above the composer."
  },
  {
   "id": "CHAT-03",
@@ -3818,25 +3823,27 @@
  {
   "id": "ASK-01",
   "area": "Asking and answering",
-  "title": "\"Ask {name}\": one sheet, one button",
+  "title": "Record a question from the mic",
   "status": "built",
-  "screen": "ask",
+  "screen": "chat.person",
   "prototype": null,
   "given": "a chat with a person",
-  "when": "the \"+\" is tapped",
+  "when": "the mic is tapped where the chat accepts a recorded question",
   "then": [
-   "a sheet built like \"Add someone to chat with\": the title \"Ask {name}\", the black \"Record your question\", Cancel",
-   "the three steps (\"1. Ask one thing · A clear question gets a clear answer\", \"2. {name} answers · Out loud, when they have a moment\", \"3. It stays here · Play it again whenever you need it\") only before your first question; no line about their topics"
+   "the shared composer keeps Files on the left and the message field in the middle",
+   "\"Record your question\" opens the existing recorder for that person. Files offers the current chat's supported attachments."
   ],
   "rules": [
-   "N483 items 4 and 6",
-   "N498 item 1"
+   "N667",
+   "N483 item 4",
+   "customer-requests.md C1"
   ],
   "code": [
-   "fe:src/components/willab/chats/AskSheet.tsx::export default function AskSheet"
+   "fe:src/components/willab/chats/ChatThread.tsx::function PeopleBar",
+   "fe:src/components/willab/chats/ChatComposer.tsx::export default function ChatComposer"
   ],
   "tests": [
-   "src/components/willab/chats/chats.test.tsx"
+   "src/components/willab/chats/chatBar.test.tsx"
   ],
   "evals": []
  },
@@ -3878,7 +3885,7 @@
   "screen": "chat.person",
   "prototype": null,
   "given": "someone asked you something to answer properly",
-  "when": "the bar's middle reads \"Record your answer\" with \"Not now\" under their question",
+  "when": "the mic reads \"Record your answer\" with \"Not now\" under their question",
   "then": [
    "the recording screens open on one poster slide, \"{name} asks\" as its label and the question as its heading; the top bar is their name alone",
    "Finish take goes back to the chat; the answer goes by itself after 5 seconds with Undo until then, even if you leave the app",
@@ -3888,15 +3895,17 @@
    "recording-screens.md \"The flow\" 6",
    "N483 item 5",
    "N481 item 1",
-   "N504 item 2"
+   "N504 item 2",
+   "N667"
   ],
   "code": [
    "fe:src/lib/willab/chatAnswer.ts",
-   "fe:src/components/willab/chats/ChatThread.tsx::export function RecordAnswerButton",
+   "fe:src/components/willab/chats/ChatThread.tsx::function PeopleBar",
    "be:services/chat_not_now.py"
   ],
   "tests": [
-   "src/lib/willab/chatAnswer.test.ts"
+   "src/lib/willab/chatAnswer.test.ts",
+   "src/components/willab/chats/chatBar.test.tsx"
   ],
   "evals": []
  },
@@ -3969,7 +3978,7 @@
   "given": "a matched Take arrives",
   "when": "its chat opens in the list",
   "then": [
-   "who asks (a pseudonym and their role) and what it is about, never a name; \"Open Take\" in the bar's middle accepts, \"Not now\" declines and nobody is told",
+   "who asks (a pseudonym and their role) and what it is about, never a name; \"Open Take\" accepts, \"Not now\" declines and nobody is told",
    "names show to both only once the answer is sent; left unanswered it stays as it is"
   ],
   "rules": [
@@ -5296,14 +5305,14 @@
  {
   "id": "PRI-01",
   "area": "Principles / Sunday note",
-  "title": "The note rests: no mic in Will's chat",
+  "title": "The notebook rests in Will's chat",
   "status": "built",
   "screen": "will.after",
   "prototype": null,
   "given": "Will's chat",
   "when": "the speaker looks for the mic or types \"#\"",
   "then": [
-   "no mic and no \"#\" note; Will no longer introduces the notebook or asks \"Keep a voice notebook?\"",
+   "the notebook has no recording action in this chat. Older notes are still available.",
    "everything already kept stays; the dump screen is the notebook's way in"
   ],
   "rules": [
@@ -7554,7 +7563,7 @@
   "when": "the wait goes on",
   "then": [
    "\"What would you like to do here first?\" with \"Something else\" (first, it opens the typing box), \"Learn from others\", \"Share what I know\" and \"Prepare a talk\"",
-   "several may be tapped, then \"Send\" in the bar's middle; each answer opens its own branch",
+   "several may be tapped, then confirm the picks above the composer; each answer opens its own branch",
    "a coach's link goes the coach's own way and never sees it; nothing is asked that the five slides answered"
   ],
   "rules": [
@@ -8044,7 +8053,7 @@
    "tests/test_the_bar.py"
   ],
   "evals": [],
-  "note": "Backend merged (#1868, #1880): a typed question is marked to answer; the host types only where their own recipe has typing on (N610), and records as in any chat. The bar is the frontend's (#1362, N610), not checked from this repo."
+  "note": "Backend merged (#1868, #1880): a typed question is marked to answer; the host types only where their own recipe has typing on (N610), and records as in any chat. N667 defines the frontend's shared composer."
  },
  {
   "id": "WID-23",
