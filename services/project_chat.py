@@ -146,6 +146,7 @@ _MORE_STRENGTHS = re.compile(
     re.IGNORECASE,
 )
 _REMEMBER_PRACTICE = re.compile(r"\b(?:remember\w*|zapamięt\w*|utrwal\w*)\b", re.IGNORECASE)
+_ASKS_ABOUT_AUDIENCE = re.compile(r"\b(?:audience|listeners?|odbiorc\w*|słuchacz\w*)\b", re.IGNORECASE)
 _STRENGTH_KINDS = {"praise", "strength", "strong", "great_formulation"}
 
 
@@ -1122,13 +1123,14 @@ def _lightweight(question: str, state: ProjectChatState) -> bool:
     return state.phase == ConversationPhase.CONVERSATION and bool(_ACK.fullmatch(question.strip()))
 
 
-def _review_instruction(context: ProjectChatContext, question: str, review: dict) -> str:
+def _review_instruction(context: ProjectChatContext, state: ProjectChatState, question: str, review: dict) -> str:
     anchor = review["anchor"]
     if anchor["step"] == "practise" and context.ideal_text and _REMEMBER_PRACTICE.search(question):
         return ("The speaker is asking how to carry their practice into the next recording. "
-                "In the answer, invite them to open their existing Ideal Text and explain that "
-                "its helper words cue both what they said and how it felt to say it. "
-                "Use the existing name 'słowa pomocnicze' in Polish. Keep it to two short sentences. "
+                "Invite them to open their existing Ideal Text, using that document name. "
+                "Explain that they can use helper words from the document to remember both the request "
+                "and how it sounded or felt in practice. Use słowa pomocnicze in Polish. Avoid quoting "
+                "helper words or saying they've already chosen any. Use two short sentences. "
                 "Set next_review_step to 'ideal', moment and wording to null, and practise to false.")
     if anchor["step"] == "feedback" and _MORE_STRENGTHS.search(question):
         strengths = {item.get("snippet_id") for item in context.feedback_moments
@@ -1138,6 +1140,10 @@ def _review_instruction(context: ProjectChatContext, question: str, review: dict
                     "Start by saying you need to hear more to point out another one. Then explain "
                     "what worked in the current clip using one concrete detail. Set moment to 'reviewed', "
                     "next_review_step and wording to null, and practise to false.")
+    if not state.audience_known and _ASKS_ABOUT_AUDIENCE.search(question):
+        return ("If the passage doesn't say who will hear the talk and they ask how to adapt it "
+                "for its audience, the entire answer is one short question asking who will hear it. "
+                "Use one sentence and one question mark. Leave the other fields empty or false.")
     return ""
 
 
@@ -1164,7 +1170,7 @@ def _model_turn(
         prompt["speaker_is_reviewing"] = review
     user_prompt = json.dumps(prompt, ensure_ascii=False, sort_keys=True)
     system = _SYSTEM + "\n" + coach_wording.WORDING_RULES + f"\nRequested tone: {_tone(question)}."
-    if review and (instruction := _review_instruction(context, question, review)):
+    if review and (instruction := _review_instruction(context, state, question, review)):
         system += f"\n\nFor this turn: {instruction}"
     started = time.perf_counter()
     try:

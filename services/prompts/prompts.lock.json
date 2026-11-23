@@ -354,7 +354,7 @@
     "project_chat.review": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "e4ee421740779e8d37dde310c0afa1f12f2c474a0b386c22d5edeb59c526bb47"
+      "sha256": "77bcb50803c4f2d10b0fa4715b68420d2a75e5a8c8c4a700bbad27311776b46b"
     },
     "project_chat.system": {
       "kind": "source_ref",
@@ -496,10 +496,15 @@
       "module": "verbal_read",
       "sha256": "14ec80153bf161150497b1658fe8e7573ba22360e3eaec48990074f1ef00c6e4"
     },
+    "walk_voice.project_praise": {
+      "kind": "static",
+      "module": "walk_voice",
+      "sha256": "21278092485ad9d6c622a0b3a60dab2fca7c14d2793197586bb62c7c1ea0919e"
+    },
     "walk_voice.system": {
       "kind": "static",
       "module": "walk_voice",
-      "sha256": "1e34b5656de064811bf5fe624447421b15121af26fce3afe181ddcc0bab5f503"
+      "sha256": "689d76f8cb265447423a564dc360487a5d0aad6d5edfb0db463a586695b69577"
     },
     "whisper_snippet.priming": {
       "kind": "source_ref",
@@ -509,7 +514,7 @@
     "will_question.heard": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "9435ed445d9e09ef3fdf09d92e1e007d0d7e0f936ff42458060ea768ca6e208f"
+      "sha256": "6f2bfecfc5910ad3e937ef0b76cd6e3d4eb35f2ab0c1ecc0fa8545197a9f4d1c"
     },
     "will_question.heard_user": {
       "kind": "source_ref",

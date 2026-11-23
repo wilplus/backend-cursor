@@ -162,7 +162,7 @@ def compose(context: dict, step: dict) -> Optional[str]:
     fails or its words fail ``check``. No database."""
     from services.llm import chat_complete
     from services.llm_config import SPEC_WALK_VOICE
-    from services.prompts.walk_voice import SYSTEM
+    from services.prompts.walk_voice import PROJECT_PRAISE, SYSTEM
     from services.content_language import complete_in_language, resolve_content_language
     target_language = resolve_content_language(
         recording_language=context.get("target_language")
@@ -172,11 +172,16 @@ def compose(context: dict, step: dict) -> Optional[str]:
             if isinstance(value, str)
         ),
     )
+    moment = context.get("moment") or {}
+    contextual_praise = step.get("message") == _STEP_ASK["praise"] and (
+        target_language == "pl" or context.get("project") or moment.get("delivery_observations")
+    )
+    system = SYSTEM + PROJECT_PRAISE if contextual_praise else SYSTEM
     user = ("CONTEXT:\n" + json.dumps(context, indent=1, ensure_ascii=False)
             + "\n\nSTEP:\n" + json.dumps(step, indent=1, ensure_ascii=False))
     for attempt in range(ATTEMPTS):
         result = complete_in_language(
-            chat_complete, target_language=target_language, system=SYSTEM,
+            chat_complete, target_language=target_language, system=system,
             user=user, spec=SPEC_WALK_VOICE, surface=_SURFACE,
         )
         text = _unwrapped((getattr(result, "text", None) or "") if result else "")
