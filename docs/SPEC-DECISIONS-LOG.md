@@ -17831,3 +17831,13 @@ The rules: frontend [`docs/flows/recording-screens.md`](https://github.com/wilpl
 2. **The edge swipe back** (item 7): in the app, the iPhone's own swipe from the left edge closes the screen on top (a chat's profile, the Ideal Text, a sheet), the screen under it following the finger. It is on only where Back simply closes that screen: never while a Take is recorded or not yet on the server (N553, N560: Back there asks "Discard this take?"), and never on a screen that uses Back for its own steps (the walk). The walk keeps its own sideways motion and the recording screens their 0.4 s fade (locked).
 3. Both are native and ship in app version 1.1 (N661), after the founder has tried them. No new words.
 No rules page beyond the recording screens' line for item 2's Take rule. No migration.
+
+**N682 · Reopen the Take's conversation as a full-width review** (founder, Take design Codex chat, 23 November 2026, including the artifact reference at 20:06 Warsaw time). Updates N670 and N673. N677 and N679 continue to govern the wording and interventions the coach serves.
+
+The active Take uses the usual chat bubbles. When the speaker leaves, a single clickable recap gives a short preview of the exchange. Reopening restores the same Take's messages and saved practice in order, including supplied clips, coach video, AI audio and pace traces. Saved practice is replayable. The open review uses the chat's full reading area and one scroll. Ideal Text sits below the practice with its editing, copy and export tools. Other long documents use the same width. Later messages continue in the chat below.
+
+A selected moment carries its Take and available clip reference into the regular composer. Typed and spoken follow-ups enter the existing chat path. The view displays authored or saved material from the selected conversation and its Take. The same layout applies to any chat that carries a Take.
+
+The founder's 20:56 follow-up puts each recorded slide immediately above its Ideal Text. The same document layout opens from every entry. The document menu holds its tools. Readiness and rehearsal choices leave the document. The attachment menu has a solid background. The chat mic records an answer there. A reply carrying the explicit next Take action shows one line, **Record the next take ›**, which opens that project's recorder.
+
+The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [Ideal Text](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md).
