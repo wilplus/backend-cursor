@@ -364,7 +364,7 @@
     "project_chat.wording": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "1b5d4e6784c77855bb19c56fdecff4de3f7e521fc22fac19fcb21f459f0fb447"
+      "sha256": "69d9581fc34150a034636a670cf915ee045f7a15cf322b98d573b5ad8d78485b"
     },
     "question_kind.system": {
       "kind": "static",
@@ -449,7 +449,7 @@
     "speaking_coach.wording": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "1b5d4e6784c77855bb19c56fdecff4de3f7e521fc22fac19fcb21f459f0fb447"
+      "sha256": "69d9581fc34150a034636a670cf915ee045f7a15cf322b98d573b5ad8d78485b"
     },
     "speaking_coach.words_only": {
       "kind": "source_ref",
