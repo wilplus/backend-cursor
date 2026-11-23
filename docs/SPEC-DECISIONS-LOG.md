@@ -17753,3 +17753,9 @@ The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/
 One backdrop dims the whole viewport. On a computer, the brief prompt is a centered confirmation dialog. On a phone, it opens as a full-width bottom sheet with the small handle used by Add someone. Confirming opens Chat Builder.
 
 The rules: frontend [`docs/chat-builder/flow.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/chat-builder/flow.md).
+
+**N669 · The private Speaking Coach reflects how the speaker communicated** (founder, the Codex chat, 23 November 2026, asking for a “metacognitive mirror” and for replies “using the vocal and verbal cues”). Extends N663. N278 still governs workplace chats.
+
+When a speaker asks what their Take shows about them, Will points to specific spoken words or a move in the speech and connects it to observed delivery from that passage. It offers any listener impression as a possibility and asks a focused question that helps the speaker confirm it or understand the habit. With words alone, Will names that basis for the reflection. When useful, it offers one rehearsable action, using a fitting reviewed intervention when available. It reflects the speaker's stated values in their own terms and attributes quoted beliefs to their source.
+
+The rules: [`docs/SPEAKER-MEMORY.md`](SPEAKER-MEMORY.md).
