@@ -86,6 +86,48 @@ def _call(view, *args, owned=True, query="", **ctx):
     return status, resp.get_json(), resp
 
 
+def test_a_take_review_only_reads_the_callers_completed_take_in_that_project():
+    from services import take_review_history
+
+    app = Flask(__name__)
+    row = {**SESSIONS[0], "user_id": USER}
+    with app.test_request_context(f"/?take={TAKE}"), \
+            patch.object(route, "_arc_owned_by_caller", return_value=(False, [])) as owned, \
+            patch.object(take_review_history, "walk_steps", return_value=[]) as steps:
+        request.user_id = USER
+        view = inspect.unwrap(route.v2_take_review_runs)
+        for result in [(False, []), (True, []), (True, [{**row, "user_id": "other"}]),
+                       (True, [{**row, "analysis_state": "queued"}])]:
+            owned.return_value = result
+            assert view(ARC)[1] == 404
+        steps.assert_not_called()
+        owned.return_value = (True, [row])
+        assert view(ARC).get_json() == {"messages": []}
+        steps.assert_called_once_with(db, USER, ARC, TAKE)
+
+
+def test_a_take_review_reads_past_a_storage_page_in_conversation_order():
+    from services import take_review_history
+
+    table = MagicMock()
+    query = table.select.return_value
+    for operation in (query.eq, query.gt, query.order, query.limit):
+        operation.return_value = query
+    first_page = [{"id": str(index), "client_created_at": "2026-11-23T12:00:00Z"}
+                  for index in range(500)]
+    oldest = {"id": "500", "client_created_at": "2026-11-23T11:00:00Z"}
+    query.execute.side_effect = [MagicMock(data=first_page), MagicMock(data=[oldest])]
+    client = MagicMock()
+    client.table.return_value = table
+    with patch.object(db, "client", client):
+        assert take_review_history.walk_steps(db, USER, ARC, TAKE) == [oldest, *first_page]
+    query.eq.assert_any_call("user_id", USER)
+    query.eq.assert_any_call("chat_erased", False)
+    query.eq.assert_any_call("metadata->>arc_id", ARC)
+    query.eq.assert_any_call("metadata->>take_session_id", TAKE)
+    query.gt.assert_called_once_with("id", "499")
+
+
 # ── GET /explore/arc/<arc>/ideal-text ───────────────────────────────────────
 
 MACHINE = "Para one new.\n\nPara two.\n\nPara three new."

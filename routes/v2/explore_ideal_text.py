@@ -93,7 +93,10 @@ def _completed_spoken_sessions(sessions):
 @v2_bp.route("/explore/arc/<arc_id>/review/runs", methods=["GET"])
 @require_auth
 def v2_take_review_runs(arc_id):
+    from routes.v2.common import _resolve_snippet_audio_url
     from services import take_review_history
+    from services.audio_ref_resolver import resolve_playable_ref
+    from services.lounge_clips import enrich_page
 
     owned, sessions = _arc_owned_by_caller(arc_id)
     if not owned:
@@ -103,6 +106,14 @@ def v2_take_review_runs(arc_id):
         str(item["id"]) for item in _completed_spoken_sessions(sessions)
         if item.get("id") and str(item.get("user_id")) == actor and take_review_history.is_ready(item)
     }
+    take = request.args.get("take")
+    if take is not None:
+        if take not in take_ids:
+            return jsonify({"code": "NOT_FOUND"}), 404
+        page = {"messages": take_review_history.walk_steps(db, actor, str(arc_id), take)}
+        enrich_page(page, actor, db, resolve_snippet=_resolve_snippet_audio_url,
+                    resolve_ref=resolve_playable_ref, with_flags=False)
+        return jsonify(page)
     return jsonify({"runs": take_review_history.practice_runs(db, actor, str(arc_id), take_ids)})
 
 
