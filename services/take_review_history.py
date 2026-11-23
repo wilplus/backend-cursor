@@ -76,6 +76,7 @@ def practice_runs(database, user_id: str, arc_id: str, take_ids: set[str]) -> di
         query = (database.client.table("lounge_messages").select(
             "id, client_created_at, take:metadata->>take_session_id, step:metadata->>step",
         ).eq("user_id", user_id).eq("kind", "walk_step").eq("role", "user")
+            .eq("chat_erased", False)
             .eq("metadata->>arc_id", arc_id)
             .or_("metadata->>step.like.try:*,metadata->>step.eq.tempo:try"))
         if cursor is not None:
@@ -91,3 +92,21 @@ def practice_runs(database, user_id: str, arc_id: str, take_ids: set[str]) -> di
         if len(rows) < 500:
             return runs
         cursor = rows[-1]["id"]
+
+
+def walk_steps(database, user_id: str, arc_id: str, take_id: str) -> list[dict]:
+    """The visible messages saved during one Take's walk, oldest first."""
+    rows: list[dict] = []
+    cursor = None
+    while True:
+        query = (database.client.table("lounge_messages")
+                 .select("id, client_id, role, kind, body, metadata, client_created_at")
+                 .eq("user_id", user_id).eq("chat_erased", False).eq("kind", "walk_step")
+                 .eq("metadata->>arc_id", arc_id).eq("metadata->>take_session_id", take_id))
+        if cursor is not None:
+            query = query.gt("id", cursor)
+        batch = query.order("id").limit(500).execute().data or []
+        rows.extend(batch)
+        if len(batch) < 500:
+            return sorted(rows, key=lambda row: row["client_created_at"])
+        cursor = batch[-1]["id"]
