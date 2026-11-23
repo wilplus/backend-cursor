@@ -30,10 +30,11 @@ import struct
 import unittest
 import wave
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+from postgrest.exceptions import APIError
 from services import chat_builder_reply as reply
-from services import chat_voice
+from services import chat_structure, chat_voice
 from services.chat_builder_reply import (
     complete, reply_act, strip_feelings, strip_person_scores,
 )
@@ -41,6 +42,26 @@ from tests.test_chats import _Store
 
 
 HOST = "11111111-1111-1111-1111-111111111111"
+
+
+class ChatArtifactSaveTest(unittest.TestCase):
+    def test_a_rolling_deploy_acknowledges_only_an_artifact_it_saved(self):
+        database = MagicMock()
+        execute = database.client.rpc.return_value.execute
+        turn = {"client_id": HOST, "question": "Do you have time?", "answer": "Friday."}
+        artifact = {"version": 1, "title": "Appointment", "output": "Friday."}
+        turn_with_artifact = {**turn, "artifact": {**artifact, "extra": "ignored", "moment": "nul\x00"}}
+        execute.side_effect = [APIError({"code": "PGRST202", "message": "Not in cache"}),
+                               SimpleNamespace(data=True), SimpleNamespace(data=True)]
+
+        self.assertEqual(chat_structure.keep_turn(database, HOST, "main", turn_with_artifact),
+                         ({"code": "ARTIFACT_STORAGE_UNAVAILABLE"}, 503))
+        self.assertEqual(chat_structure.keep_turn(database, HOST, "main", turn_with_artifact),
+                         ({"saved": True, "artifact_saved": True}, 200))
+        self.assertEqual(database.client.rpc.call_args.args[0], "append_owner_chat_section_v2")
+        self.assertEqual(database.client.rpc.call_args.args[1]["p_artifact"], artifact)
+        self.assertEqual(chat_structure.keep_turn(database, HOST, "main", turn), ({"saved": True}, 200))
+        self.assertEqual(database.client.rpc.call_args.args[0], "append_owner_chat_section_v1")
 
 
 def _recipe(**over) -> dict:
