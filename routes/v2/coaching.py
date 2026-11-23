@@ -296,6 +296,11 @@ def _correlated_request_id(client_id: Any, request_id: Any) -> tuple[Any, bool]:
     )
 
 
+def _take_exchange_scope(context):
+    inside = context.get("take_exchange") if isinstance(context, dict) else None
+    return {"take_exchange": inside} if isinstance(inside, bool) else {}
+
+
 def _claim_project_scope(transport, context):
     if not transport["project_id"]:
         return None
@@ -305,6 +310,7 @@ def _claim_project_scope(transport, context):
     return {
         "arc_id": transport["project_id"], "project_chat": True,
         "take_session_id": transport["take_id"], **({"review_focus": focus} if focus else {}),
+        **_take_exchange_scope(context),
     }
 
 
@@ -510,6 +516,7 @@ def v2_chat_query():
                     "arc_id": transport["project_id"], "project_chat": True,
                     "take_session_id": meta.get("take_session_id") or transport["take_id"],
                     **({"review_focus": meta["review_focus"]} if meta.get("review_focus") else {}),
+                    **_take_exchange_scope(presentation_context),
                 }
             return jsonify(finish_chat_turn(
                 db, resp, user_id=request.user_id, question=question,
