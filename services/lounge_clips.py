@@ -24,6 +24,48 @@ from typing import Any, Callable, Optional
 logger = logging.getLogger(__name__)
 
 
+def chat_moment_reference(arc_id: str, take_id: str, snippet_id: str,
+                          *, practise: bool = False) -> dict:
+    """The durable chat reference. Playback gets a fresh link on read."""
+    return {
+        "arc_id": arc_id, "take_session_id": take_id, "snippet_id": snippet_id,
+        "practise": practise,
+    }
+
+
+def read_chat_moment(database: Any, user_id: str, take_id: str,
+                     snippet_id: str) -> Optional[dict]:
+    """Resolve exactly the requested moment after checking current access."""
+    from services.project_deletion import ProjectDeletionService
+    from services.snippet_audio_url import resolve_snippet_audio_url
+    from services.speaker_lookup import _takes_in_force
+
+    take = database.takes.v2_get_session(take_id, user_id)
+    if not take or str(take.get("user_id") or "") != str(user_id):
+        return None
+    arc_id = str(take.get("arc_id") or "")
+    if not arc_id:
+        return None
+    projects = ProjectDeletionService(database)
+    if projects.erased_projects([arc_id]) or projects.archived_projects([arc_id]):
+        return None
+    if take_id not in _takes_in_force(database, [take]):
+        return None
+    snippet = database.get_snippet_by_id(snippet_id, user_id=user_id)
+    if not snippet or str(snippet.get("session_id") or "") != take_id:
+        return None
+    start, length = snippet.get("start_offset_ms"), snippet.get("duration_ms")
+    if type(start) is not int or start < 0 or type(length) is not int or length <= 0:
+        return None
+    url = resolve_snippet_audio_url(snippet, database)
+    if not url:
+        return None
+    return {
+        "arc_id": arc_id, "take_index": take.get("take_index"),
+        "audio_url": url, "start_offset_ms": start, "duration_ms": length,
+    }
+
+
 class _SessionSnippets:
     """The database, with ``get_snippets_by_session`` served from one batch
     read of every Take on the page (light columns only). Anything else, and

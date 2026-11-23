@@ -167,10 +167,12 @@ The scoped lookup ranks transcript passages, delivery observations, current
 Ideal Text and shared coach feedback by keywords and by meaning. It uses one
 authorized batch of up to 48 passages with a two-second timeout and falls
 back to keyword ranking.
-Coach references resolve to the cited Take transcript, Ideal Text or shared
-feedback. A practice request may add one matching exercise from the reviewed
-catalogue. Private speaker memory guides coaching preferences and stays out
-of search and source links.
+When the coach cites a specific recorded moment, the reply can play that
+fragment in chat (N672). The saved reference resolves against the speaker's current
+project access and recording authorization. An exercise can appear with the
+fragment when the existing Picker serves it for that same moment. The reply
+includes Ideal Text or shared feedback when cited. Private speaker memory
+guides coaching preferences and stays out of search and source links.
 
 When a speaker asks what a Take shows about them, the coach gives a direct
 listener impression in everyday language. A short cue from the same passage

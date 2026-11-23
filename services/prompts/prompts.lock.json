@@ -409,12 +409,12 @@
     "speaking_coach.delivery_evidence": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "8c641450fdaff6714506056e769e236771bc95f5e90f3fec8d7b2bf0649c8b2b"
+      "sha256": "59a4f50268c93898fb894b3a2394453056241af3865a779f3fca4c3789932e55"
     },
     "speaking_coach.practice": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "33f696a70493d6572c111722db8c475d40f58e1ec41fee8c1879f3104e03b0c9"
+      "sha256": "d8052f16b3b8a92c96f2d131351772b01e9182f146b215368bf979e14a0aa638"
     },
     "speaking_coach.scoped_evidence": {
       "kind": "source_ref",
@@ -424,7 +424,7 @@
     "speaking_coach.system": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "d112f4b9e1eea6a3e67ae2460c7b5591f2ccc6b1f51b50c11e76f88c3b903e1a"
+      "sha256": "7cac905d5a4dcddc91d6d89edf044bd93b46efd3ac9430fb174c1dcb537e78fd"
     },
     "speaking_coach.words_only": {
       "kind": "source_ref",

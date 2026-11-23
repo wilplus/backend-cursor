@@ -6,7 +6,7 @@ import re
 import textwrap
 from collections import Counter
 from dataclasses import dataclass
-from urllib.parse import quote, urlencode
+from urllib.parse import urlencode
 
 from services.speaking_coach_scope import normalize, requested_passage
 
@@ -37,11 +37,9 @@ class Source:
     take_id: str
     slide: int | None = None
     take_number: int | None = None
+    snippet_id: str | None = None
 
     def url(self, base: str) -> str:
-        if self.kind == "transcript":
-            query = "?" + urlencode({"slide": self.slide}) if self.slide is not None else ""
-            return f"{base}/chat/take/{quote(self.take_id, safe='')}{query}"
         if self.kind == "feedback":
             from services.coach_feedback_email import feedback_url
             return feedback_url(self.arc_id, self.take_id)
@@ -86,8 +84,9 @@ def _deck(take: dict) -> list:
     return slides if isinstance(slides, list) else []
 
 
-def _transcript_source(take: dict, slide: int | None) -> Source:
-    return Source("transcript", str(take["arc_id"]), str(take["id"]), slide, take.get("take_index"))
+def _transcript_source(take: dict, slide: int | None, snippet_id: str | None = None) -> Source:
+    return Source("transcript", str(take["arc_id"]), str(take["id"]), slide,
+                  take.get("take_index"), snippet_id)
 
 
 def transcript_evidence(label: str, takes: list[dict]) -> list[Evidence]:
@@ -148,7 +147,8 @@ def delivery_evidence(label: str, take: dict, rows: list[dict]) -> list[Evidence
         out.append(Evidence(
             "delivery_cues", label, "recent", "observed_cues",
             f"Spoken passage: «{quote}». {description}",
-            (_transcript_source(take, index),), section, index if has_deck else None,
+            (_transcript_source(take, index, str(row["id"]) if row.get("id") else None),),
+            section, index if has_deck else None,
         ))
     return list(dict.fromkeys(out))
 
@@ -252,13 +252,15 @@ def _sources_for_slide(evidence: tuple[Evidence, ...], slide: int | None) -> lis
     sources = [item for item in evidence if item.source_type in SOURCE_KINDS]
     if slide is None:
         return sources
-    aligned = {source for item in sources if item.source_type == "progression" and item.slide == slide
+    aligned = {(source.take_id, source.slide)
+               for item in sources if item.source_type == "progression" and item.slide == slide
                for source in item.sources}
     return [item for item in sources
             if item.source_type not in ("take_transcript", "delivery_cues", "progression")
             or (item.source_type == "progression" and item.slide == slide)
             or (item.source_type in ("take_transcript", "delivery_cues") and (
-                any(source in aligned for source in item.sources) if aligned else item.slide == slide
+                any((source.take_id, source.slide) in aligned for source in item.sources)
+                if aligned else item.slide == slide
             ))]
 
 
