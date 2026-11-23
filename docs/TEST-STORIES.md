@@ -1476,7 +1476,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O1** The shipped prompts_v1.yaml loads as UTF-8 Polish, and the gate order, each cell's reference and the self-rating choices come from that file.
 - **O2** A session stores my consent and, when I send one, a single PDF page or slides. My volunteer id is not my auth id.
 - **O3** A take keeps the tag, the rating, the words Whisper returned, and the audio in the private bucket. A rating outside the prompt set is refused.
-- **O4** analyze-take returns the fixed grid. Baseline vocal cells can use a measured loudness. The gate is the first unsure step in the file's order. No feeling is named.
+- **O4** Asking for an analysis answers 202. The stored result is analyze-take/v0.1. A locked step's score_if_unlocked stays stored and is left out of the read the volunteer gets. No feeling is named.
 - **O5** My prompt library and my interventions are mine. The picker returns at most two, and the earlier step in the file's order wins.
 - **O6** Export is my rows only. A researcher export needs my explicit consent.
 - **O7** Deleting me removes my rows and my stored files. Someone else cannot read or delete them.

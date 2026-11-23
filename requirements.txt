@@ -28,7 +28,9 @@ stripe==11.1.1
 # recurring events expanded.
 icalendar==6.1.0
 recurring-ical-events==3.3.0
-numpy>=1.24.0
+# 2.5.3 is what the gate runs; 2.5.5 also satisfies this. The experiments
+# model (below) refuses anything older than 2.5.3.
+numpy>=2.5.3,<3
 imageio-ffmpeg
 boto3>=1.34.0
 # Audio DSP — richer feature extraction (MFCC, spectral_*, pyin pitch,
@@ -36,6 +38,8 @@ boto3>=1.34.0
 # ~150-200MB image bloat + ~5-10s numba JIT cold start on first call
 # (warmed at worker boot via gunicorn_conf.py post_worker_init).
 librosa==0.10.2
+# The gate's resolved pair, and what wpl_arousal 0.2 was retrained against.
+scipy==1.18.1
 # PINNED 2026-10-03 after a production crash loop: the build of that morning
 # resolved numba 0.68.0 / llvmlite 0.50.0 (released 2026-09-30 and 09-29),
 # and every gunicorn worker segfaulted in librosa's pitch gufunc during the
@@ -45,7 +49,7 @@ librosa==0.10.2
 # once on the new pair, never by letting the resolver drift.
 numba==0.67.0
 llvmlite==0.49.0
-soundfile>=0.12.0
+soundfile==0.14.0
 # Slide-deck parsing (UX Wave 4, PDF-only): pypdf extracts per-slide text from
 # the uploaded PDF. Lazy-imported in services/deck_parser.py. (PPTX is not
 # converted server-side — users export to PDF; LibreOffice was dropped.)
@@ -101,3 +105,20 @@ limits==5.8.0
 # The experiments prompt set (services/experiments/prompts_v1.yaml) is YAML.
 # Lazy-imported in services/experiments_config.py.
 PyYAML==6.0.2
+# Validates the experiments analyze-take/v0.1 example.
+jsonschema==4.23.0
+# wpl_arousal 0.2, in this same image. librosa already pulls scikit-learn;
+# 1.9.1 is exact because artifacts/models.joblib was pickled with it.
+# numba stays 0.67.0 / llvmlite 0.49.0 above (the 2026-10-03 pitch-gufunc
+# crash). Railway and CI are Python 3.12.1 (runtime.txt), where that pin
+# has wheels. The package does not pin numba. torch is the CPU wheel and
+# is imported only when a job runs or WPL_AROUSAL_WARMUP=1.
+scikit-learn==1.9.1
+joblib==1.6.0
+pandas==3.1.1
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.15.0
+transformers==4.57.6
+huggingface_hub==0.36.2
+tokenizers==0.22.2
+safetensors==0.8.0

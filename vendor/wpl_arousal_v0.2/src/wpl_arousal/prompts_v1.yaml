@@ -1,0 +1,21 @@
+version: 1
+language: pl
+order: [engagement, arousal, valence, clarity]
+baseline_scored: [engagement, arousal, valence_voice]
+reference_scored: [valence_words, clarity]
+prompts:
+  - {id: b1, tag: baseline_calm, text: "Wyobraź sobie, że tłumaczysz komuś z innej epoki, jak wygląda Twój zwykły poranek. Opisz go krok po kroku."}
+  - {id: b2, tag: baseline_calm, text: "Opisz miejsce, w którym teraz siedzisz, tak, żeby ktoś mógł je narysować bez patrzenia."}
+  - {id: b3, tag: baseline_calm, text: "Wyjaśnij, jak działa coś prostego, czego używasz codziennie, na przykład czajnik albo kalendarz."}
+  - {id: p1, tag: positive, text: "Przypomnij sobie moment, w którym pomyślałeś: „To działa!”. Co się wtedy stało i co poczułeś?"}
+  - {id: p2, tag: positive, text: "Opowiedz o rozmowie, po której wiedziałeś, że Twój pomysł naprawdę komuś pomógł."}
+  - {id: p3, tag: positive, text: "Jaka idea w Twojej pracy wydaje Ci się tak oczywista i piękna, że dziwisz się, że nikt nie wpadł na nią wcześniej?"}
+  - {id: p4, tag: positive, text: "Opisz osobę, od której nauczyłeś się czegoś, co zmieniło Twój sposób myślenia."}
+  - {id: c1, tag: challenging, text: "Komisja inwestorów słucha Cię i ocenia. Masz 60 sekund, żeby przekonać ich, że Twoja firma przetrwa najbliższe trzy lata."}
+  - {id: c2, tag: challenging, text: "Ktoś mądry i sceptyczny pyta: „A skąd wiesz, że to nie przypadek?”. Udowodnij, że Twoje wyniki są prawdziwe."}
+  - {id: c3, tag: challenging, text: "„Lider rynku robi to samo, taniej i lepiej.” Odpowiedz bez wahania."}
+  - {id: c4, tag: challenging, text: "Twój największy klient odchodzi i pyta: „Dlaczego miałbym zostać?”. Masz jedną szansę."}
+  - {id: c5, tag: challenging, text: "Policz na głos w pamięci od 1022 w dół co 13, jak najszybciej."}
+  - {id: k1, tag: clarity, reference: business_case, text: "Wyjaśnij swojemu dwunastoletniemu bratankowi, co robi Twoja firma i dlaczego ktoś za to płaci."}
+  - {id: k2, tag: clarity, reference: business_case, text: "Gdyby Twoją firmę dało się opisać jednym wykresem, co byłoby na osiach i dlaczego?"}
+self_report: {energy: [low, high], feeling: [good, tense]}

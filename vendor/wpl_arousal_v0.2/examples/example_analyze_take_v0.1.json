@@ -1,0 +1,1091 @@
+{
+ "schema": "analyze-take/v0.1",
+ "package_version": "0.1.0",
+ "value_range": [
+  -1,
+  1
+ ],
+ "value_scaling": "cell value = clip(z / 2, -1, 1), z vs the speaker's calm baseline windows (vs=baseline) or a fixed scale (vs=reference); +1 = 2 SD above own calm voice",
+ "thresholds": {
+  "engagement_score_min": -0.5,
+  "arousal_conf_min": 0.363,
+  "valence_conf_min": 0.482,
+  "clarity_conf_min": 0.5
+ },
+ "provisional": {
+  "engagement": "heuristic proxy (loudness, speech-activity rate, voiced share vs your baseline); no engagement labels yet",
+  "valence": "trained on acted speech (nEMO); expect lower accuracy on real founders",
+  "clarity": "simple reference score (embedding similarity to the business case + filler words); uncalibrated",
+  "word_sentiment": "whole-take HerBERT sentiment, not time-aligned; carried ~0 weight in training (nEMO sentences are emotion-neutral)"
+ },
+ "takes": [
+  {
+   "take_id": "KS0_happiness_demo",
+   "prompt_tag": null,
+   "duration_s": 2.42,
+   "transcript": "W wolnym czasie lubię czytać książki.",
+   "order": [
+    "engagement",
+    "arousal",
+    "valence",
+    "clarity"
+   ],
+   "moments": [
+    {
+     "t_start": 0.0,
+     "t_end": 1.0,
+     "grid": [
+      {
+       "step": "engagement",
+       "cue": "voiced_ratio",
+       "value": 0.1083,
+       "vs": "baseline"
+      },
+      {
+       "step": "engagement",
+       "cue": "loudness",
+       "value": 0.4091,
+       "vs": "baseline"
+      },
+      {
+       "step": "engagement",
+       "cue": "speech_activity_rate",
+       "value": 0.0364,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "pitch_level",
+       "value": 1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "pitch_range",
+       "value": 1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "voice_brightness",
+       "value": 0.5943,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "wavlm_arousal",
+       "value": 1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "wavlm_valence",
+       "value": 1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "wavlm_dominance",
+       "value": 1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "pitch_variability",
+       "value": 1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "word_sentiment",
+       "value": 0.9948,
+       "vs": "reference",
+       "note": "whole-take transcript sentiment (not time-aligned)"
+      },
+      {
+       "step": "clarity",
+       "cue": "business_case_coverage",
+       "value": null,
+       "vs": "reference",
+       "note": "no business case uploaded"
+      },
+      {
+       "step": "clarity",
+       "cue": "semantic_similarity",
+       "value": null,
+       "vs": "reference",
+       "note": "no business case uploaded"
+      },
+      {
+       "step": "clarity",
+       "cue": "filler_word_rate",
+       "value": null,
+       "vs": "reference",
+       "note": "no business case uploaded"
+      }
+     ]
+    },
+    {
+     "t_start": 1.0,
+     "t_end": 2.0,
+     "grid": [
+      {
+       "step": "engagement",
+       "cue": "voiced_ratio",
+       "value": -0.4345,
+       "vs": "baseline"
+      },
+      {
+       "step": "engagement",
+       "cue": "loudness",
+       "value": 0.5013,
+       "vs": "baseline"
+      },
+      {
+       "step": "engagement",
+       "cue": "speech_activity_rate",
+       "value": 0.8712,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "pitch_level",
+       "value": 1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "pitch_range",
+       "value": 1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "voice_brightness",
+       "value": 0.8659,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "wavlm_arousal",
+       "value": 1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "wavlm_valence",
+       "value": 1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "wavlm_dominance",
+       "value": 1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "pitch_variability",
+       "value": 1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "word_sentiment",
+       "value": 0.9948,
+       "vs": "reference",
+       "note": "whole-take transcript sentiment (not time-aligned)"
+      },
+      {
+       "step": "clarity",
+       "cue": "business_case_coverage",
+       "value": null,
+       "vs": "reference",
+       "note": "no business case uploaded"
+      },
+      {
+       "step": "clarity",
+       "cue": "semantic_similarity",
+       "value": null,
+       "vs": "reference",
+       "note": "no business case uploaded"
+      },
+      {
+       "step": "clarity",
+       "cue": "filler_word_rate",
+       "value": null,
+       "vs": "reference",
+       "note": "no business case uploaded"
+      }
+     ]
+    },
+    {
+     "t_start": 2.0,
+     "t_end": 2.42,
+     "grid": [
+      {
+       "step": "engagement",
+       "cue": "voiced_ratio",
+       "value": 0.71,
+       "vs": "baseline"
+      },
+      {
+       "step": "engagement",
+       "cue": "loudness",
+       "value": -0.7727,
+       "vs": "baseline"
+      },
+      {
+       "step": "engagement",
+       "cue": "speech_activity_rate",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "pitch_level",
+       "value": 0.4303,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "pitch_range",
+       "value": -0.4173,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "voice_brightness",
+       "value": 0.065,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "wavlm_arousal",
+       "value": -0.6878,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "wavlm_valence",
+       "value": -0.386,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "wavlm_dominance",
+       "value": -0.7602,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "pitch_variability",
+       "value": -0.5332,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "word_sentiment",
+       "value": 0.9948,
+       "vs": "reference",
+       "note": "whole-take transcript sentiment (not time-aligned)"
+      },
+      {
+       "step": "clarity",
+       "cue": "business_case_coverage",
+       "value": null,
+       "vs": "reference",
+       "note": "no business case uploaded"
+      },
+      {
+       "step": "clarity",
+       "cue": "semantic_similarity",
+       "value": null,
+       "vs": "reference",
+       "note": "no business case uploaded"
+      },
+      {
+       "step": "clarity",
+       "cue": "filler_word_rate",
+       "value": null,
+       "vs": "reference",
+       "note": "no business case uploaded"
+      }
+     ]
+    }
+   ],
+   "summary": {
+    "engagement": {
+     "score": 0.065,
+     "confidence": 0.667,
+     "vs": "baseline",
+     "provisional": true,
+     "note": "heuristic: mean of loudness, activity rate, voiced ratio vs baseline; no engagement labels yet",
+     "cues": {
+      "loudness": 0.289,
+      "speech_activity_rate": -0.145,
+      "voiced_ratio": 0.05
+     },
+     "unlocked": true
+    },
+    "arousal": {
+     "score": 1.0,
+     "confidence": 1.0,
+     "vs": "baseline",
+     "p_high": 1.0,
+     "judges": {
+      "librosa": 1.0,
+      "wavlm": 0.998,
+      "text": 0.503
+     },
+     "unlocked": true
+    },
+    "valence": {
+     "score": 0.998,
+     "confidence": 0.998,
+     "vs": "baseline+reference",
+     "p_positive": 0.999,
+     "voice_part": 0.998,
+     "words_part": 0.995,
+     "judges": {
+      "librosa": 0.591,
+      "wavlm": 1.0,
+      "text": 0.501
+     },
+     "unlocked": true
+    },
+    "clarity": {
+     "score": null,
+     "confidence": 0.0,
+     "vs": "reference",
+     "note": "no business case uploaded",
+     "provisional": true,
+     "unlocked": true
+    }
+   },
+   "gate": {
+    "step": "clarity",
+    "reason": "no business case / reference to score clarity against"
+   },
+   "processing_s": 1.42
+  },
+  {
+   "take_id": "KS0_anger_demo",
+   "prompt_tag": null,
+   "duration_s": 2.14,
+   "transcript": "Lubię czytać przed snem.",
+   "order": [
+    "engagement",
+    "arousal",
+    "valence",
+    "clarity"
+   ],
+   "moments": [
+    {
+     "t_start": 0.0,
+     "t_end": 1.0,
+     "grid": [
+      {
+       "step": "engagement",
+       "cue": "voiced_ratio",
+       "value": -0.9773,
+       "vs": "baseline"
+      },
+      {
+       "step": "engagement",
+       "cue": "loudness",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "engagement",
+       "cue": "speech_activity_rate",
+       "value": -0.381,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "pitch_level",
+       "value": 1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "pitch_range",
+       "value": 1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "voice_brightness",
+       "value": 0.4611,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "wavlm_arousal",
+       "value": 0.813,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "wavlm_valence",
+       "value": -0.1459,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "wavlm_dominance",
+       "value": 0.601,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "pitch_variability",
+       "value": 1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "word_sentiment",
+       "value": 0.9971,
+       "vs": "reference",
+       "note": "whole-take transcript sentiment (not time-aligned)"
+      },
+      {
+       "step": "clarity",
+       "cue": "business_case_coverage",
+       "value": null,
+       "vs": "reference",
+       "note": "no business case uploaded"
+      },
+      {
+       "step": "clarity",
+       "cue": "semantic_similarity",
+       "value": null,
+       "vs": "reference",
+       "note": "no business case uploaded"
+      },
+      {
+       "step": "clarity",
+       "cue": "filler_word_rate",
+       "value": null,
+       "vs": "reference",
+       "note": "no business case uploaded"
+      }
+     ]
+    },
+    {
+     "t_start": 1.0,
+     "t_end": 2.14,
+     "grid": [
+      {
+       "step": "engagement",
+       "cue": "voiced_ratio",
+       "value": -0.731,
+       "vs": "baseline"
+      },
+      {
+       "step": "engagement",
+       "cue": "loudness",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "engagement",
+       "cue": "speech_activity_rate",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "pitch_level",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "pitch_range",
+       "value": -0.0867,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "voice_brightness",
+       "value": 0.9647,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "wavlm_arousal",
+       "value": -0.1029,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "wavlm_valence",
+       "value": -0.2695,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "wavlm_dominance",
+       "value": -0.2875,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "pitch_variability",
+       "value": 0.1119,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "word_sentiment",
+       "value": 0.9971,
+       "vs": "reference",
+       "note": "whole-take transcript sentiment (not time-aligned)"
+      },
+      {
+       "step": "clarity",
+       "cue": "business_case_coverage",
+       "value": null,
+       "vs": "reference",
+       "note": "no business case uploaded"
+      },
+      {
+       "step": "clarity",
+       "cue": "semantic_similarity",
+       "value": null,
+       "vs": "reference",
+       "note": "no business case uploaded"
+      },
+      {
+       "step": "clarity",
+       "cue": "filler_word_rate",
+       "value": null,
+       "vs": "reference",
+       "note": "no business case uploaded"
+      }
+     ]
+    }
+   ],
+   "summary": {
+    "engagement": {
+     "score": -0.999,
+     "confidence": 1.0,
+     "vs": "baseline",
+     "provisional": true,
+     "note": "heuristic: mean of loudness, activity rate, voiced ratio vs baseline; no engagement labels yet",
+     "cues": {
+      "loudness": -1.0,
+      "speech_activity_rate": -1.0,
+      "voiced_ratio": -0.998
+     },
+     "unlocked": true
+    },
+    "arousal": {
+     "score": null,
+     "confidence": 0.802,
+     "vs": "baseline",
+     "p_high": 0.901,
+     "judges": {
+      "librosa": 0.898,
+      "wavlm": 0.783,
+      "text": 0.503
+     },
+     "unlocked": false,
+     "score_if_unlocked": 0.802
+    },
+    "valence": {
+     "score": null,
+     "confidence": 0.63,
+     "vs": "baseline+reference",
+     "p_positive": 0.185,
+     "voice_part": -0.63,
+     "words_part": 0.997,
+     "judges": {
+      "librosa": 0.063,
+      "wavlm": 0.479,
+      "text": 0.501
+     },
+     "unlocked": false,
+     "score_if_unlocked": -0.63
+    },
+    "clarity": {
+     "score": null,
+     "confidence": 0.0,
+     "vs": "reference",
+     "note": "no business case uploaded",
+     "provisional": true,
+     "unlocked": false,
+     "score_if_unlocked": null
+    }
+   },
+   "gate": {
+    "step": "engagement",
+    "reason": "engagement too low vs your baseline (score < -0.5)"
+   },
+   "processing_s": 0.97
+  },
+  {
+   "take_id": "KS0_sadness_demo",
+   "prompt_tag": null,
+   "duration_s": 3.51,
+   "transcript": "Robimy aplikację, która nagrywa pitch founderów i daje im informację zwrotną o głosie. Płacą 49 złotych miesięcznie.",
+   "order": [
+    "engagement",
+    "arousal",
+    "valence",
+    "clarity"
+   ],
+   "moments": [
+    {
+     "t_start": 0.0,
+     "t_end": 1.0,
+     "grid": [
+      {
+       "step": "engagement",
+       "cue": "voiced_ratio",
+       "value": 0.0179,
+       "vs": "baseline"
+      },
+      {
+       "step": "engagement",
+       "cue": "loudness",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "engagement",
+       "cue": "speech_activity_rate",
+       "value": 0.0364,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "pitch_level",
+       "value": -0.1889,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "pitch_range",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "voice_brightness",
+       "value": 0.2186,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "wavlm_arousal",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "wavlm_valence",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "wavlm_dominance",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "pitch_variability",
+       "value": -0.9665,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "word_sentiment",
+       "value": 0.0966,
+       "vs": "reference",
+       "note": "whole-take transcript sentiment (not time-aligned)"
+      },
+      {
+       "step": "clarity",
+       "cue": "business_case_coverage",
+       "value": 0.0,
+       "vs": "reference",
+       "note": "whole-take value (transcript is not time-aligned)"
+      },
+      {
+       "step": "clarity",
+       "cue": "semantic_similarity",
+       "value": 1.0,
+       "vs": "reference",
+       "note": "whole-take value (transcript is not time-aligned)"
+      },
+      {
+       "step": "clarity",
+       "cue": "filler_word_rate",
+       "value": 1.0,
+       "vs": "reference",
+       "note": "whole-take value (transcript is not time-aligned)"
+      }
+     ]
+    },
+    {
+     "t_start": 1.0,
+     "t_end": 2.0,
+     "grid": [
+      {
+       "step": "engagement",
+       "cue": "voiced_ratio",
+       "value": -0.7964,
+       "vs": "baseline"
+      },
+      {
+       "step": "engagement",
+       "cue": "loudness",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "engagement",
+       "cue": "speech_activity_rate",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "pitch_level",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "pitch_range",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "voice_brightness",
+       "value": 1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "wavlm_arousal",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "wavlm_valence",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "wavlm_dominance",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "pitch_variability",
+       "value": -0.977,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "word_sentiment",
+       "value": 0.0966,
+       "vs": "reference",
+       "note": "whole-take transcript sentiment (not time-aligned)"
+      },
+      {
+       "step": "clarity",
+       "cue": "business_case_coverage",
+       "value": 0.0,
+       "vs": "reference",
+       "note": "whole-take value (transcript is not time-aligned)"
+      },
+      {
+       "step": "clarity",
+       "cue": "semantic_similarity",
+       "value": 1.0,
+       "vs": "reference",
+       "note": "whole-take value (transcript is not time-aligned)"
+      },
+      {
+       "step": "clarity",
+       "cue": "filler_word_rate",
+       "value": 1.0,
+       "vs": "reference",
+       "note": "whole-take value (transcript is not time-aligned)"
+      }
+     ]
+    },
+    {
+     "t_start": 2.0,
+     "t_end": 3.0,
+     "grid": [
+      {
+       "step": "engagement",
+       "cue": "voiced_ratio",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "engagement",
+       "cue": "loudness",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "engagement",
+       "cue": "speech_activity_rate",
+       "value": 0.0364,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "pitch_level",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "pitch_range",
+       "value": -0.3977,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "voice_brightness",
+       "value": 0.6581,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "wavlm_arousal",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "wavlm_valence",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "wavlm_dominance",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "pitch_variability",
+       "value": 0.1309,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "word_sentiment",
+       "value": 0.0966,
+       "vs": "reference",
+       "note": "whole-take transcript sentiment (not time-aligned)"
+      },
+      {
+       "step": "clarity",
+       "cue": "business_case_coverage",
+       "value": 0.0,
+       "vs": "reference",
+       "note": "whole-take value (transcript is not time-aligned)"
+      },
+      {
+       "step": "clarity",
+       "cue": "semantic_similarity",
+       "value": 1.0,
+       "vs": "reference",
+       "note": "whole-take value (transcript is not time-aligned)"
+      },
+      {
+       "step": "clarity",
+       "cue": "filler_word_rate",
+       "value": 1.0,
+       "vs": "reference",
+       "note": "whole-take value (transcript is not time-aligned)"
+      }
+     ]
+    },
+    {
+     "t_start": 3.0,
+     "t_end": 3.51,
+     "grid": [
+      {
+       "step": "engagement",
+       "cue": "voiced_ratio",
+       "value": -0.4948,
+       "vs": "baseline"
+      },
+      {
+       "step": "engagement",
+       "cue": "loudness",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "engagement",
+       "cue": "speech_activity_rate",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "pitch_level",
+       "value": 0.4249,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "pitch_range",
+       "value": -0.8219,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "voice_brightness",
+       "value": 0.269,
+       "vs": "baseline"
+      },
+      {
+       "step": "arousal",
+       "cue": "wavlm_arousal",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "wavlm_valence",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "wavlm_dominance",
+       "value": -1.0,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "pitch_variability",
+       "value": -0.7407,
+       "vs": "baseline"
+      },
+      {
+       "step": "valence",
+       "cue": "word_sentiment",
+       "value": 0.0966,
+       "vs": "reference",
+       "note": "whole-take transcript sentiment (not time-aligned)"
+      },
+      {
+       "step": "clarity",
+       "cue": "business_case_coverage",
+       "value": 0.0,
+       "vs": "reference",
+       "note": "whole-take value (transcript is not time-aligned)"
+      },
+      {
+       "step": "clarity",
+       "cue": "semantic_similarity",
+       "value": 1.0,
+       "vs": "reference",
+       "note": "whole-take value (transcript is not time-aligned)"
+      },
+      {
+       "step": "clarity",
+       "cue": "filler_word_rate",
+       "value": 1.0,
+       "vs": "reference",
+       "note": "whole-take value (transcript is not time-aligned)"
+      }
+     ]
+    }
+   ],
+   "summary": {
+    "engagement": {
+     "score": -1.0,
+     "confidence": 1.0,
+     "vs": "baseline",
+     "provisional": true,
+     "note": "heuristic: mean of loudness, activity rate, voiced ratio vs baseline; no engagement labels yet",
+     "cues": {
+      "loudness": -1.0,
+      "speech_activity_rate": -1.0,
+      "voiced_ratio": -1.0
+     },
+     "unlocked": true
+    },
+    "arousal": {
+     "score": null,
+     "confidence": 0.95,
+     "vs": "baseline",
+     "p_high": 0.025,
+     "judges": {
+      "librosa": 0.001,
+      "wavlm": 0.326,
+      "text": 0.498
+     },
+     "unlocked": false,
+     "score_if_unlocked": -0.95
+    },
+    "valence": {
+     "score": null,
+     "confidence": 1.0,
+     "vs": "baseline+reference",
+     "p_positive": 0.0,
+     "voice_part": -1.0,
+     "words_part": 0.097,
+     "judges": {
+      "librosa": 0.059,
+      "wavlm": 0.0,
+      "text": 0.499
+     },
+     "unlocked": false,
+     "score_if_unlocked": -1.0
+    },
+    "clarity": {
+     "score": null,
+     "confidence": 0.283,
+     "vs": "reference",
+     "provisional": true,
+     "cues": {
+      "business_case_coverage": 0.0,
+      "semantic_similarity": 1.0,
+      "filler_word_rate": 1.0
+     },
+     "raw": {
+      "coverage": 0.5,
+      "cosine": 0.717,
+      "fillers_per_100_words": 0.0,
+      "business_case_sentences": 4
+     },
+     "note": "embedding similarity to the business case + filler words; uncalibrated",
+     "unlocked": false,
+     "score_if_unlocked": 0.667
+    }
+   },
+   "gate": {
+    "step": "engagement",
+    "reason": "engagement too low vs your baseline (score < -0.5)"
+   },
+   "processing_s": 2.53
+  }
+ ],
+ "example_note": "KS0 nEMO clips (actor KS0 IS in the final training set, so this shows the format, not accuracy). Third take uses a demo business case with a mismatched transcript."
+}

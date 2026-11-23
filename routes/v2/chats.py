@@ -648,6 +648,57 @@ def v2_chats_blank_setup_models():
         db, str(request.user_id))))
 
 
+@v2_bp.route("/chats/<chat_id>/experiment-config", methods=["GET"])
+@require_auth
+def v2_chats_experiment_config(chat_id):
+    """The chat's model and baseline prompts. A member can read. The host writes."""
+    from services.experiment_models import read_config
+    return _experiment("config", lambda: read_config(db, str(request.user_id), chat_id))
+
+
+@v2_bp.route("/chats/<chat_id>/experiment-config", methods=["PUT"])
+@limiter.limit("30 per hour", scope="experiments_chat_config")
+@require_auth
+def v2_chats_experiment_config_put(chat_id):
+    from services.experiment_models import write_config
+    body = request.get_json(silent=True)
+    return _experiment("config", lambda: write_config(db, str(request.user_id), chat_id, body))
+
+
+@v2_bp.route("/chats/<chat_id>/reply-examples", methods=["GET"])
+@require_auth
+def v2_chats_reply_examples(chat_id):
+    """The host's kept Test answers. limit and offset page them."""
+    from services.experiment_models import reply_examples
+
+    def _page(name: str, default: int, most: int) -> int:
+        raw = request.args.get(name)
+        if raw is None or raw == "":
+            return default
+        try:
+            value = int(raw)
+        except ValueError:
+            return default
+        return min(most, max(0, value))
+
+    limit, offset = _page("limit", 20, 100), _page("offset", 0, 10000)
+    return _experiment(
+        "examples", lambda: reply_examples(
+            db, str(request.user_id), chat_id, limit=limit or 20, offset=offset))
+
+
+def _experiment(label: str, work):
+    from services.experiments import ExperimentsError
+    try:
+        return jsonify(work())
+    except ExperimentsError as exc:
+        return jsonify({"code": exc.code, "error": str(exc)}), exc.status
+    except Exception as exc:
+        logger.exception("experiments %s failed", label)
+        sentry_sdk.capture_exception(exc)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to reach experiments"}), 500
+
+
 @v2_bp.route("/chats/<chat_id>/reply", methods=["POST"])
 @require_auth
 @phase1_provider_route

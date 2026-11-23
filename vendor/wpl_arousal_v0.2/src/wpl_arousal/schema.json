@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://willpowerlab.local/schemas/analyze-take/v0.1.json",
+  "title": "POST /analyze-take response (analyze-take/v0.1)",
+  "type": "object",
+  "required": ["schema", "value_range", "value_scaling", "thresholds", "takes"],
+  "properties": {
+    "schema": {"type": "string", "pattern": "^analyze-take/"},
+    "package_version": {"type": "string"},
+    "value_range": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+    "value_scaling": {"type": "string"},
+    "thresholds": {
+      "type": "object",
+      "required": ["engagement_score_min", "arousal_conf_min", "valence_conf_min"],
+      "additionalProperties": {"type": "number"}
+    },
+    "provisional": {"type": "object", "additionalProperties": {"type": "string"}},
+    "takes": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/take"}}
+  },
+  "definitions": {
+    "step": {"enum": ["engagement", "arousal", "valence", "clarity"]},
+    "nullable_unit": {"type": ["number", "null"], "minimum": -1, "maximum": 1},
+    "cell": {
+      "type": "object",
+      "required": ["step", "cue", "value", "vs"],
+      "properties": {
+        "step": {"$ref": "#/definitions/step"},
+        "cue": {"type": "string"},
+        "value": {"$ref": "#/definitions/nullable_unit"},
+        "vs": {"enum": ["baseline", "reference"]},
+        "note": {"type": "string"}
+      }
+    },
+    "moment": {
+      "type": "object",
+      "required": ["t_start", "t_end", "grid"],
+      "properties": {
+        "t_start": {"type": "number", "minimum": 0},
+        "t_end": {"type": "number", "minimum": 0},
+        "grid": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/cell"}}
+      }
+    },
+    "step_summary": {
+      "type": "object",
+      "required": ["score", "confidence", "vs", "unlocked"],
+      "properties": {
+        "score": {"$ref": "#/definitions/nullable_unit"},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "vs": {"enum": ["baseline", "reference", "baseline+reference"]},
+        "unlocked": {"type": "boolean"},
+        "score_if_unlocked": {"$ref": "#/definitions/nullable_unit"},
+        "provisional": {"type": "boolean"},
+        "note": {"type": "string"},
+        "judges": {"type": "object", "additionalProperties": {"type": "number", "minimum": 0, "maximum": 1}}
+      }
+    },
+    "take": {
+      "type": "object",
+      "required": ["take_id", "order", "moments", "summary", "gate"],
+      "properties": {
+        "take_id": {"type": "string"},
+        "prompt_tag": {"type": ["string", "null"]},
+        "duration_s": {"type": "number"},
+        "transcript": {"type": ["string", "null"]},
+        "order": {"const": ["engagement", "arousal", "valence", "clarity"]},
+        "moments": {"type": "array", "items": {"$ref": "#/definitions/moment"}},
+        "summary": {
+          "type": "object",
+          "required": ["engagement", "arousal", "valence", "clarity"],
+          "properties": {
+            "engagement": {"$ref": "#/definitions/step_summary"},
+            "arousal": {"$ref": "#/definitions/step_summary"},
+            "valence": {"$ref": "#/definitions/step_summary"},
+            "clarity": {"$ref": "#/definitions/step_summary"}
+          }
+        },
+        "gate": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "object", "required": ["step", "reason"],
+             "properties": {"step": {"$ref": "#/definitions/step"}, "reason": {"type": "string"}}}
+          ]
+        },
+        "processing_s": {"type": "number"}
+      }
+    }
+  }
+}

@@ -564,3 +564,5 @@
 0526	owner_edits_use_current_processing_authority.sql
 0527	a_host_keeps_taught_replies.sql
 0528	a_volunteer_keeps_their_experiments.sql
+0529	a_volunteer_keeps_their_arousal_baseline.sql
+0530	a_host_keeps_an_experiment_model.sql
