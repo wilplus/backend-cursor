@@ -17771,3 +17771,9 @@ The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/
 Speaking Coach, its project conversations, and the owner's chats and subchats share the workspace sidebar. Selecting a row changes the conversation beside it. A sidebar icon at the top left opens and hides the sidebar. Speaking Coach and own-chat setup are available at the bottom. The sidebar replaces the full-page chat list, the Projects selector in Speaking Coach, and the menu inside a project conversation. The Take review, its recording handoff, contextual feedback history, and existing chat and project management continue in their active conversation.
 
 The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [`docs/chat-builder/flow.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/chat-builder/flow.md).
+
+**N672 · Coaching replies can play a moment and offer its intervention in chat** (founder, the Speaking Coach Codex chat, 23 November 2026, asking to replace the transcript link with a playable fragment and to surface the real intervention where it helps). Extends N669 and N670.
+
+A reply can play the exact authorized fragment it uses as evidence. The chat omits the automatic transcript footer. An applicable intervention already selected for that moment can show its existing demonstration and practice controls in the reply. The same treatment applies on eligible chat surfaces. Take ownership, the Picker's serving rules and practice permissions govern the card.
+
+The rules: frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [`docs/SPEAKER-MEMORY.md`](SPEAKER-MEMORY.md).
