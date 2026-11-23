@@ -11567,6 +11567,7 @@ class DatabaseService:
                     "client_created_at"
                 )
                 .eq("user_id", user_id)
+                .eq("chat_erased", False)
             )
             if before:
                 query = query.lt("client_created_at", before)
@@ -11687,6 +11688,7 @@ class DatabaseService:
             res = (
                 self.client.table("lounge_messages").select(cols)
                 .eq("user_id", user_id)
+                .eq("chat_erased", False)
                 .order("client_created_at", desc=True)
                 .limit(limit + 1)
                 .execute()
@@ -12013,7 +12015,7 @@ class DatabaseService:
         try:
             res = (
                 self.client.table("lounge_messages")
-                .select("id,client_id,role,kind,body,metadata,client_created_at")
+                .select("id,client_id,role,kind,body,metadata,client_created_at,chat_erased")
                 .eq("user_id", user_id)
                 .eq("client_id", client_id)
                 .limit(1)
@@ -12087,6 +12089,7 @@ class DatabaseService:
                 .update(fields)
                 .eq("user_id", user_id)
                 .eq("client_id", client_id)
+                .eq("chat_erased", False)
                 .execute()
             )
             return res.data[0] if res.data else None

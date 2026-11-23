@@ -172,7 +172,7 @@ def turns(database, user_id: str, section_id: str) -> tuple[dict, int]:
 def read_turns(database, user_id: str, section_id: str, *, limit: int = 100) -> list[dict]:
     result = (database.client.table("owner_chat_section_turns")
               .select("client_id,question,answer").eq("user_id", user_id)
-              .eq("section_id", section_id).order("created_at", desc=True)
+              .eq("section_id", section_id).not_.is_("question", "null").order("created_at", desc=True)
               .order("client_id", desc=True).limit(limit).execute())
     return list(reversed(result.data or []))
 

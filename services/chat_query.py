@@ -210,6 +210,8 @@ def replay_chat_turn(database, user_id, user_client_id, question: str) -> Option
         return None
     turn_id = chat_turn_id(user_client_id)
     mine = _read_lounge_row(database, user_id, turn_id)
+    if mine and mine.get("chat_erased"):
+        return terminal_error_response(turn_id, "CHAT_TURN_DELETED", retryable=False)
     user_replay = None
     if mine and mine.get("role") == "user":
         stored_question = str(mine.get("body") or "").strip()
@@ -220,6 +222,8 @@ def replay_chat_turn(database, user_id, user_client_id, question: str) -> Option
         user_replay = _receipt_replay((mine.get("metadata") or {}), turn_id)
     row = _read_lounge_row(database, user_id, bot_client_id(turn_id))
     if row and row.get("role") == "bot":
+        if row.get("chat_erased"):
+            return terminal_error_response(turn_id, "CHAT_TURN_DELETED", retryable=False)
         metadata = row.get("metadata") or {}
         replay = _receipt_replay(metadata, turn_id)
         if replay is not None:
