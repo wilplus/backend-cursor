@@ -17841,3 +17841,9 @@ A selected moment carries its Take and available clip reference into the regular
 The founder's 20:56 follow-up puts each recorded slide immediately above its Ideal Text. The same document layout opens from every entry. The document menu holds its tools. Readiness and rehearsal choices leave the document. The attachment menu has a solid background. The chat mic records an answer there. A reply carrying the explicit next Take action shows one line, **Record the next take ›**, which opens that project's recorder.
 
 The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [Ideal Text](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md).
+
+**N683 · Close processing into the Take's chat** (founder, Take design Codex chat, 23 November 2026, with the 23:16 Warsaw screenshots). Centers the waiting screen and updates its close behavior for project Takes.
+
+Finish makes the Take available in its own chat. Closing progress opens that chat immediately, including when its first recording is still uploading. A new chat appears under Speaking Coach in the sidebar. The speaker's recording comes first, followed by the processing bubble. Tapping the processing bubble reopens the same progress screen. A Take recorded in an existing project opens that project's chat. Setup cancellation and the explicit discard action keep their existing behavior.
+
+The rules: [Recording screens](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md) and [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
