@@ -351,10 +351,15 @@
       "module": "coach_answer_drafts",
       "sha256": "29b84443b1ce8b65a04d1d1def1a477e5c1542e3c3119c7a3b410ea69d4e7b93"
     },
+    "project_chat.review": {
+      "kind": "source_ref",
+      "module": "pending",
+      "sha256": "981e48400b3402aa9ef3894d139d67f0e3d140ec5e6ac24531b21adb6ea185cd"
+    },
     "project_chat.system": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "2a20ebf22e4145e4627de56cc9b796db4e96dfc8a4a546db95b65d1e21cbdac2"
+      "sha256": "7738645ac137483199d05f3c0d29c107866196ed71a994b112420d5ad3f62616"
     },
     "project_chat.wording": {
       "kind": "source_ref",

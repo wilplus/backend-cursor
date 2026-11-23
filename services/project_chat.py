@@ -127,9 +127,10 @@ _FORBIDDEN_OUTPUT = re.compile(
     re.IGNORECASE,
 )
 _AUDIENCE_EVIDENCE = re.compile(
-    r"\b(?:my audience is|i(?:'m| am) speaking to|this is for|"
-    r"i(?:'m| am) talking to)\s+([^.!?;\n]{2,90})"
-    r"|(?:mówię do|to jest dla|moja publiczność to)\s+([^.!?;\n]{2,90})",
+    r"\b(?:my audience is|i(?:'m| am) (?:speaking|talking) (?:mainly |primarily )?to|"
+    r"this is for)\s+([^.!?;\n]{2,90})"
+    r"|(?:mówię (?:to )?(?:(?:głównie|przede wszystkim) )?do|to jest dla|"
+    r"moja publiczność to)\s+([^.!?;\n]{2,90})",
     re.IGNORECASE,
 )
 _GOAL_EVIDENCE = re.compile(
@@ -138,6 +139,14 @@ _GOAL_EVIDENCE = re.compile(
     r"|(?:chcę,? żeby|chciałbym,? żeby|chciałabym,? żeby|mają)\s+([^.!?;\n]{2,100})",
     re.IGNORECASE,
 )
+_MORE_STRENGTHS = re.compile(
+    r"\b(?:more|another|other|else|second)\b.{0,40}\b(?:strengths?|good|positive|work\w*)\b|"
+    r"\bwhat (?:else|more) (?:went well|worked)\b|"
+    r"\b(?:jeszcze|kolejn\w*|inn\w*|drug\w*)\b.{0,35}\b(?:dobr\w*|mocn\w*|udał\w*|wyszł\w*)\b",
+    re.IGNORECASE,
+)
+_REMEMBER_PRACTICE = re.compile(r"\b(?:remember\w*|zapamięt\w*|utrwal\w*)\b", re.IGNORECASE)
+_STRENGTH_KINDS = {"praise", "strength", "strong", "great_formulation"}
 
 
 def clear_cache(*, user_id: Optional[str] = None, arc_id: Optional[str] = None) -> None:
@@ -397,6 +406,7 @@ def _draft_signature(drafts: list[dict]) -> list[dict]:
             "snippet": str(row.get("snippet_id") or ""),
             "surfaced": bool(row.get("surfaced")),
             "note": row.get("note") or "",
+            "kind": _feedback_kind(row),
             "updated": str(row.get("updated_at") or row.get("created_at") or ""),
         }
         for row in drafts
@@ -563,6 +573,10 @@ def _setup_values(
     }
 
 
+def _feedback_kind(draft: dict) -> str:
+    return _text(draft.get("feedback_family") or draft.get("tag") or draft.get("kind") or draft.get("device"), 80)
+
+
 def _feedback_moments(current: dict, drafts: list[dict], snippets: list[dict]) -> list[dict]:
     if not current.get("results_published_at"):
         return []
@@ -585,7 +599,7 @@ def _feedback_moments(current: dict, drafts: list[dict], snippets: list[dict]) -
         feedback.append({
             "moment": moment,
             "feedback": _text(draft.get("note"), 800),
-            "kind": _text(draft.get("kind") or draft.get("device"), 80),
+            "kind": _feedback_kind(draft),
             **({"snippet_id": str(snippet["id"])} if snippet.get("id") else {}),
         })
         if len(feedback) >= MAX_FEEDBACK_MOMENTS:
@@ -838,15 +852,15 @@ speaker's words or delivery. If the speaker is asking a question, answer it
 directly. When a missing detail would change the advice, ask just for that
 detail. Read the Take's words and any existing answer before asking. Separate
 the intended listeners from a person or group mentioned as a decision-maker.
-When they name the team as the listener and the board as the decision-maker,
-suggest focusing on the team and leaving the approval for a separate
-conversation. Keep each group's role and only give an exact change supported
-by the speaker's words. When they ask how to tailor a line and the listener
-is unclear, ask one short question like 'Kto będzie cię słuchał — Rada czy
-zespół?' and wait for their answer. Do not invent a listener, an emotion, a
-positive moment, or a sound. Delivery observations belong to their own
-passage. Stick to what the words support when there is no sound evidence.
-Give the listening impression in plain language.
+When they ask for edits and already name a primary listener and a separate
+decision-maker, give a direct edit: address the intended audience and leave
+the decision for the separate conversation. Say which part to leave out.
+Keep each group's role. When they ask how to tailor a line and the listener
+is unclear, ask one short question about who will hear it and wait for their
+answer. Do not invent a listener, an emotion, a positive moment, or a sound.
+Delivery observations belong to their own passage. Stick to what the words
+support when there is no sound evidence. Give the listening impression in
+plain language.
 
 Keep replies free of profanity and explicit sexual content.
 Ask at most one clear question in a turn. During the audience/goal setup ask
@@ -1108,6 +1122,24 @@ def _lightweight(question: str, state: ProjectChatState) -> bool:
     return state.phase == ConversationPhase.CONVERSATION and bool(_ACK.fullmatch(question.strip()))
 
 
+def _review_instruction(context: ProjectChatContext, question: str, review: dict) -> str:
+    anchor = review["anchor"]
+    if anchor["step"] == "practise" and context.ideal_text and _REMEMBER_PRACTICE.search(question):
+        return ("The speaker is asking how to carry their practice into the next recording. "
+                "In the answer, invite them to open their existing Ideal Text and explain that "
+                "its helper words cue both what they said and how it felt to say it. "
+                "Set next_review_step to 'ideal', moment and wording to null, and practise to false.")
+    if anchor["step"] == "feedback" and _MORE_STRENGTHS.search(question):
+        strengths = {item.get("snippet_id") for item in context.feedback_moments
+                     if item.get("kind") in _STRENGTH_KINDS and item.get("snippet_id")}
+        if strengths == {anchor.get("snippet_id")}:
+            return ("There is only one published strength and the speaker just heard it. "
+                    "Start by saying you need to hear more to point out another one. Then explain "
+                    "what worked in the current clip using one concrete detail. Set moment to 'reviewed', "
+                    "next_review_step and wording to null, and practise to false.")
+    return ""
+
+
 def _model_turn(
     context: ProjectChatContext,
     state: ProjectChatState,
@@ -1131,6 +1163,8 @@ def _model_turn(
         prompt["speaker_is_reviewing"] = review
     user_prompt = json.dumps(prompt, ensure_ascii=False, sort_keys=True)
     system = _SYSTEM + "\n" + coach_wording.WORDING_RULES + f"\nRequested tone: {_tone(question)}."
+    if review and (instruction := _review_instruction(context, question, review)):
+        system += f"\n\nFor this turn: {instruction}"
     started = time.perf_counter()
     try:
         from services import llm
