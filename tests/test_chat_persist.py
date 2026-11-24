@@ -62,6 +62,7 @@ class ChatTurnPersistsTests(ChatRouteHarness):
                  "row_metadata": metadata}
         turn = {"question": "How can I close this?", "arc_id": "arc-a",
                 "session_id": "take-a", "place": "speaking", "persist": True,
+                "presentation_context": {"take_exchange": False},
                 "client_id": str(uuid.uuid4())}
         with patch("services.project_chat.answer", return_value=(reply, "project_chat")) as answer:
             first = self.post(turn).get_json()
@@ -72,6 +73,7 @@ class ChatTurnPersistsTests(ChatRouteHarness):
         self.assertTrue(replay["replayed"])
         for row in self.rows[-1][1]:
             self.assertEqual(row["metadata"]["arc_id"], "arc-a")
+            self.assertIs(row["metadata"]["take_exchange"], False)
         self.assertEqual(len(self.charges), 1)
 
     def test_speaking_coach_never_consumes_a_project_question(self):
