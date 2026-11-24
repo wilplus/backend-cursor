@@ -51,7 +51,9 @@ def _already_sent(session: dict) -> bool:
     )
 
 
-def _authorize_coach_delivery(db, session: dict, session_id: str, user_id: str):
+def _authorize_coach_delivery(db, session: dict, session_id: str, user_id: str, *,
+                              manifest: dict | None = None, provider: str | None = None,
+                              correlation: str | None = None):
     """Pass the canonical Phase-1 authorization path for the coach hand-off.
 
     Returns ``(adapter, permit_id)`` with the ``started`` event recorded.
@@ -85,8 +87,9 @@ def _authorize_coach_delivery(db, session: dict, session_id: str, user_id: str):
     )
     permit = adapter.authorize_operation(
         "coach_delivery",
-        manifest={"content": ["coach_packet"], "purpose": "coach_review"},
-        idempotency_key=f"coach-delivery:{session_id}:{uuid.uuid4()}",
+        manifest=manifest or {"content": ["coach_packet"], "purpose": "coach_review"},
+        idempotency_key=f"coach-delivery:{correlation or session_id}:{uuid.uuid4()}",
+        **({"provider": provider} if provider else {}),
     )
     permit_id = str((permit or {}).get("permit_id") or "") or None
     adapter.authorization.record_provider_event(permit_id, "started")

@@ -1324,12 +1324,9 @@ def answer_chat(database, *, user_id, question: str, history, context,
     question = question.strip()
     if project_id and user_id:
         from services import project_chat
-        from services.chat_intents import detect_chat_intent
-        safety = detect_chat_intent(question)
-        if safety and safety.get("intent") == "crisis":
-            claimed = _chat_intent(user_id, question, context, history)
-            if claimed:
-                return finalize(*claimed)
+        stop = _coach_intercept(database, user_id, question, context, history, app_config, project_id, take_id)
+        if stop:
+            return finalize(*stop)
         focus = context.get("review_focus") if isinstance(context, dict) else None
         live_feedback = isinstance(context, dict) and context.get("live_take_feedback") is True
         return finalize(*project_chat.answer(
@@ -1345,12 +1342,9 @@ def answer_chat(database, *, user_id, question: str, history, context,
     ordinary_coach = place == "speaking" and bool(
         getattr(app_config, "SPEAKING_COACH_ENABLED", False))
     if ordinary_coach:
-        from services.chat_intents import detect_chat_intent
-        safety = detect_chat_intent(question)
-        if safety and safety.get("intent") == "crisis":
-            claimed = _chat_intent(user_id, question, context, history)
-            if claimed:
-                return finalize(*claimed)
+        stop = _coach_intercept(database, user_id, question, context, history, app_config)
+        if stop:
+            return finalize(*stop)
     for failure, intercept in _intercepts(user_id, app_config, ordinary_coach=ordinary_coach):
         try:
             claimed = intercept(user_id, question, context, history)
@@ -1361,3 +1355,33 @@ def answer_chat(database, *, user_id, question: str, history, context,
             logger.warning("chat/query: " + failure, *args)
     return finalize(*_librarian(database, user_id, question, history,
                                 app_config, context, coach=ordinary_coach))
+
+
+def _coach_intercept(database, user_id, question, context, history, app_config, project_id=None, take_id=None):
+    from services.chat_intents import detect_chat_intent
+
+    safety = detect_chat_intent(question)
+    if safety and safety.get("intent") == "crisis":
+        claimed = _chat_intent(user_id, question, context, history)
+        if claimed:
+            return claimed
+    if user_id and getattr(app_config, "SPEAKING_COACH_ENABLED", False):
+        offered = _human_coach_handoff(database, user_id, question, project_id, take_id)
+        if offered:
+            return offered, "human_coach_handoff"
+    return None
+
+
+def _human_coach_handoff(database, user_id, question, project_id=None, take_id=None):
+    from services.human_coach_offer import explicit_request, offer
+
+    if not explicit_request(question):
+        return None
+    try:
+        handoff = offer(database, str(user_id), question, project=project_id, take=take_id)
+    except Exception as error:
+        logger.warning("human coach offer unavailable: %s", type(error).__name__, exc_info=True)
+        return None
+    if handoff:
+        return _reply(handoff["answer"], row_metadata=handoff["row_metadata"])
+    return None

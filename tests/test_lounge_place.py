@@ -48,6 +48,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 #: Every module that writes the Lounge, with one row of each kind it writes
 #: and the chat that row belongs to. A writer missing here fails O1.
 WRITERS: dict[str, list[tuple[dict, str]]] = {
+    "services/human_coach_booking.py": [
+        ({"role": "bot", "kind": "text", "metadata": {"place": SPEAKING, "arc_id": "a"}}, SPEAKING),
+    ],
     "services/plan_flow.py": [  # the plan's questions, card, hellos; the way in (N590)
         ({"role": "bot", "kind": "text", "metadata": {"plan": "p1", "plan_ask": "voice"}}, SPEAKING),
         ({"role": "user", "kind": "text", "metadata": {"plan": "p1"}}, SPEAKING)],
