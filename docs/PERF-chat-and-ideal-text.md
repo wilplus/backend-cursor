@@ -4,6 +4,8 @@
 
 ## Chat integration, 18 November 2026
 
+The project listing carries each Take's own recorded slide range for review and rehearsal. The retired Progress card no longer requires a project-wide delivery score, attempt grouping, or a second read of coach feedback.
+
 Under N663 and N665, the existing authorized `POST /v2/chat/query` remains
 the single transport, including its durable claim, terminal receipt,
 replay and charging. An explicit `arc_id` selects `services/project_chat.py`:

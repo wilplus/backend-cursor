@@ -4254,6 +4254,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O2** A talk is ideal_ready once the coach has corrected every slide; a talk with a slide still uncorrected is not.
 - **O3** A coach's training import is never in the coach's own project list (it has no project to archive, so it blocked "One project at a time").
 - **O4** Each Take carries the upload key it was sent with, so a Take kept on the phone knows whether it arrived (N556 item 3).
+- **O5** Since N689, practice and playback can read each Take's actual range.
 
 *Why:* Founder 2026-07-13 (arc-grouped trainings). The save-at-publish half (POST /v2/internal/publish-session-results) is retired and answers 410 (routes/v2/canonical_publish.py), so it has no test here.
 
