@@ -1447,7 +1447,7 @@ def _answer_metadata(context: ProjectChatContext, question: str,
                 bool(anchor and anchor.get("step") == "practise")
             ),
         )
-    if review and review.get("live"):
+    if _dict(review).get("live"):
         metadata.update(_live_feedback_metadata(context, question, parsed, snippet, metadata))
     return metadata
 
