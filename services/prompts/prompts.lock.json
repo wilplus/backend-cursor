@@ -359,7 +359,12 @@
     "project_chat.live_feedback": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "c177acc4223a7a58fb1be6e0164c3428c59dbb5e63fe15b604efcb5d259f36d2"
+      "sha256": "92604560a698072b7832d0b355984ba526334db932cc6909365d2323e8da86ed"
+    },
+    "project_chat.practice_handoff": {
+      "kind": "static",
+      "module": "coaching_evidence",
+      "sha256": "88196e12974d91a65398e2c21adb4a5abcdd79a67f879c74303ebe9471485f7b"
     },
     "project_chat.reflection": {
       "kind": "static",
@@ -369,12 +374,12 @@
     "project_chat.review": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "18a20bb5874a21ea53880ce3678e3c33411f918ca06abffa44b1d3360471b11b"
+      "sha256": "a399c0cd49adcb4af9b338d3036114409dcb651a748906134aee305311da8585"
     },
     "project_chat.system": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "c7f494dcc64c887dd0de6cf23ac9a412746abbb2d97583c794e376aa9e6445d6"
+      "sha256": "f5d90102e3438f943dbb6eee7f432dc55dea8ea40c711c42f18fcc9cabb89774"
     },
     "project_chat.wording": {
       "kind": "source_ref",
