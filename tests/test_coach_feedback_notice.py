@@ -138,7 +138,7 @@ def test_the_iphone_push_goes_with_the_message_inside_the_job(world, monkeypatch
 
     assert later == []
     assert pushed == [(USER, {"title": None, "body": "The feedback from your coach is in!",
-                              "path": f"/chat?lens=arc-1&take={TAKE_2}"})]
+                              "path": f"/chat?take={TAKE_2}"})]
 
 
 def test_without_a_number_one_email_counts_every_moment(world):

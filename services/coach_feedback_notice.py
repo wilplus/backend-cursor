@@ -144,12 +144,9 @@ def _push(database: Any, user_id: str, take_session_id: str, now: bool = False) 
     try:
         from services import push_devices
         from services.whatsapp_notify import COACH_FEEDBACK_IN, feedback_path
-        arc_id = None
-        if take_session_id:
-            arc_id = (database.v2_get_session_by_id(str(take_session_id)) or {}).get("arc_id")
         send = push_devices.push if now else push_devices.push_later
         send(database, user_id, title=None, body=COACH_FEEDBACK_IN,
-             path="/" + feedback_path(arc_id, take_session_id or None))
+             path="/" + feedback_path(take_session_id or None))
     except Exception as e:  # noqa: BLE001 -- the other messages go either way
         _log.warning("coach notice: push not started user=%s: %s", user_id, e)
 
