@@ -56,6 +56,7 @@ MAX_CONTEXT_CHARS = 1800
 MAX_TAKE_HISTORY = 3
 MAX_FEEDBACK_MOMENTS = 6
 MAX_RECORDED_PASSAGES = 6
+MAX_LATER_PASSAGES = 24
 MAX_DECK_SLIDES = 16
 MAX_ANSWER_CHARS = 1400
 MAX_CHIPS = 4
@@ -169,7 +170,9 @@ _MORE_STRENGTHS = re.compile(
 _WEAK_MOMENT_REQUEST = re.compile(
     r"^(?:and\s+)?(?:any|some|more|a little)\s+critic(?:s|ism|isms|al feedback|que|ques)[?!. ]*$|"
     r"\b(?:weaker|weakest) (?:moments?|parts?|passages?|fragments?)\b|"
-    r"\b(?:słabsz\w*|najsłabsz\w*) (?:moment\w*|fragment\w*|miejsc\w*)\b",
+    r"\b(?:słabsz\w*|najsłabsz\w*) (?:moment\w*|fragment\w*|miejsc\w*)\b|"
+    r"\bnext (?:thing|moment|area) to improve\b|"
+    r"^(?:what (?:can|should) i (?:improve|work on)|co (?:mogę|mam) poprawić)[?!. ]*$",
     re.IGNORECASE,
 )
 _SAME_MOMENT = re.compile(
@@ -212,6 +215,7 @@ _FELT_UNSURE = re.compile(
     r"\b.{0,24}\b(?:insecure|unsure|uncertain|niepewn\w*)\b",
     re.IGNORECASE,
 )
+_GAVE_A_REASON = re.compile(r"\b(?:because|since i|bo|ponieważ|dlatego że)\b", re.IGNORECASE)
 _REPHRASE_REQUEST = re.compile(r"\b(?:rephrase|rewrite|przeformuł\w*|przeredag\w*)\b", re.IGNORECASE)
 _SHOW_IDEAL = re.compile(
     r"\b(?:show|see|read|open|give|send|pokaż\w*|zobacz\w*|przeczyt\w*|otwórz\w*|daj|wyślij)\b"
@@ -221,7 +225,19 @@ _NAMED_PASSAGE = re.compile(
     r"\b(?:opening|introduction|closing|conclusion|slide (?:\w+)|take \d+|"
     r"wstęp\w*|otwarci\w*|zakończ\w*|slajd\w*|nagranie \d+)\b", re.IGNORECASE,
 )
+_LATER_SLIDES = re.compile(
+    r"\b(?:(?:next|later|remaining|other|following) slides?|"
+    r"(?:kolejn|następn|dalsz|pozostał)\w* slajd\w*)\b", re.IGNORECASE,
+)
+_LATER_PASSAGES = re.compile(
+    r"\b(?:(?:next|later|remaining|following) (?:sentences?|passages?|sections?|parts?)|"
+    r"another (?:thing|moment|area) to improve|"
+    r"(?:rest|remainder) of (?:the |this |my )?(?:talk|speech|presentation|take|recording)|"
+    r"(?:kolejn|następn|dalsz|pozostał)\w* (?:zdani\w*|fragment\w*|częś\w*)|"
+    r"reszt\w* (?:prezentacj\w*|wystąpieni\w*|nagrani\w*))\b", re.IGNORECASE,
+)
 _REMEMBER_PRACTICE = re.compile(r"\b(?:remember\w*|zapamięt\w*|utrwal\w*)\b", re.IGNORECASE)
+_IDEAL_TEXT_REQUEST = re.compile(r"\bideal text\b", re.IGNORECASE)
 _RECORD_AGAIN = re.compile(
     r"^(?:(?:can|could|may|should) (?:i|we) |(?:i want to|i'd like to|let's) )?"
     r"record(?: (?:it|one|this))? (?:again|(?:another|the next) take)[?!. ]*$|"
@@ -934,7 +950,12 @@ def _asks_about_an_unsure_moment(question: str) -> bool:
 
 def _practice_referent(context: ProjectChatContext, question: str, review: Optional[dict],
                        *, named_followup: bool = False) -> Optional[tuple[Source, str]]:
-    """Ground 'here' in the reviewed moment or a saved reply in this project."""
+    """Ground practice in the named passage, review anchor or cited project clip."""
+    if _PASSAGE_BY_DESCRIPTION.search(question) and (wants_practice(question) or requested_chat_intervention(question)):
+        candidates = [item for item in context.recorded_passages if item.sources[0].snippet_id
+                      and (not review or item.sources[0].take_id == context.take_session_id)]
+        if passage := _literal_fragment(question, candidates, context.take_session_id):
+            return passage.sources[0], passage.text
     if not (named_followup or _asks_to_practise_here(question)):
         return None
     anchor = _dict(_dict(review).get("anchor"))
@@ -958,6 +979,36 @@ def _practice_referent(context: ProjectChatContext, question: str, review: Optio
                                     snippet_id=reference["snippet_id"])
                     return source, f"{moment['moment']} {moment['feedback']}".strip()
     return None
+
+
+def _published_tempo_referent(database: Any, context: ProjectChatContext, question: str) -> tuple[Source, str] | None:
+    """Use the walk's published tempo fix for a general request for a weakness."""
+    if not _WEAK_MOMENT_REQUEST.search(question) or _PASSAGE_BY_DESCRIPTION.search(question) or _SAME_MOMENT.search(question):
+        return None
+    from services.ideal_text_feedback_bake import _bake_enabled
+    from services.tempo_stretch import pick_for_take
+
+    read_core = getattr(database, "get_ideal_text_document_core", None)
+    read_bake = getattr(database, "read_ideal_text_feedback_bake", None)
+    if not (_bake_enabled() and callable(read_core) and callable(read_bake)):
+        return None
+    arc, owner, take = context.arc_id, context.user_id, context.take_session_id
+    core = _dict(read_core(arc, owner))
+    if str(core.get("source_take_session_id") or "") != take or not (snapshot := core.get("id")):
+        return None
+    bake = _dict(read_bake(arc, owner, str(snapshot)))
+    if not any(
+        (_dict(row).get("one_fix") or _dict(_dict(row).get("presentation")).get("one_fix")) == "tempo"
+        for row in (bake.get("changes") or ())
+    ):
+        return None
+    snippets = database.get_snippets_by_session(take) or []
+    if not (picked := pick_for_take(take, snippets)):
+        return None
+    selected_id = str(snippets[picked["index"]].get("id") or "")
+    passage = next((item for item in context.recorded_passages if item.sources[0].take_id == take
+                    and item.sources[0].snippet_id == selected_id), None)
+    return (passage.sources[0], f"{passage.text} The tempo feedback found this passage {picked['reading']}.") if passage else None
 
 
 def _literal_fragment(text: str, passages: list[Evidence], current_take: str) -> Evidence | None:
@@ -1027,7 +1078,12 @@ def _answer_named_intervention(context: ProjectChatContext, state: ProjectChatSt
                   if language == "pl" else "Which fragment do you mean? Give me a few words from the recording.")
         return _reply(context, state, prompt, fast_path=True)
     metadata = _answer_metadata(context, question, {}, {"practise": True}, review, (source, ""))
-    answer = "Oto ten fragment." if language == "pl" else "Here’s that moment."
+    answer = {
+        "ai_audio": ("Przygotowuję przykład AI dla tego fragmentu.", "I’ll prepare an AI example for this passage."),
+        "sniper": ("Sprawdźmy tempo w tym fragmencie.", "Let’s work on the pace of this passage."),
+        "coach_video": ("Sprawdźmy, czy trener ma przykład do tego fragmentu.",
+                        "Let’s see if your coach has an example for this passage."),
+    }[intervention][language != "pl"]
     return _reply(context, state, answer, fast_path=True, extra_metadata=metadata)
 
 
@@ -1063,6 +1119,31 @@ def _answer_fragment_request(context: ProjectChatContext, state: ProjectChatStat
     return _reply(context, state, text, fast_path=True, extra_metadata=metadata)
 
 
+def _later_passages(context: ProjectChatContext, question: str, review: Optional[dict]) -> dict[str, Evidence] | None:
+    by_slide = bool(_LATER_SLIDES.search(question))
+    if _SHOW_IDEAL.search(question) or not (by_slide or _LATER_PASSAGES.search(question)):
+        return None
+    current = [item for item in context.recorded_passages if item.sources[0].take_id == context.take_session_id]
+    if not current:
+        return {}
+    anchor = _dict(_dict(review).get("anchor"))
+    snippet = anchor.get("snippet_id") or next((
+        item["snippet_id"] for item in _cited_project_moments(context.project_rows, context.arc_id)
+        if item.get("take_session_id") == context.take_session_id
+    ), None)
+    position = next((i for i, item in enumerate(current) if item.sources[0].snippet_id == snippet and snippet), 0)
+    slide = anchor.get("slide_index", current[position].sources[0].slide)
+    if by_slide and slide is not None:
+        later = [item for item in current if item.sources[0].slide is not None and item.sources[0].slide > slide]
+    else:
+        later = current[position + 1:]
+    if len(later) > MAX_LATER_PASSAGES:
+        # Sample the full remaining range so the last slide reaches the model too.
+        last = len(later) - 1
+        later = [later[i * last // (MAX_LATER_PASSAGES - 1)] for i in range(MAX_LATER_PASSAGES)]
+    return {f"D{index}": item for index, item in enumerate(later)}
+
+
 def _prompt_context(context: ProjectChatContext, state: ProjectChatState, passages: dict[str, Evidence]) -> dict:
     return {
         "project": {
@@ -1077,6 +1158,7 @@ def _prompt_context(context: ProjectChatContext, state: ProjectChatState, passag
         "recent_takes_same_project": list(context.recent_takes),
         "recorded_passages": [
             {"reference": reference, "take": item.sources[0].take_number,
+             "slide_number": item.slide + 1 if item.slide is not None else None,
              "recency": item.recency, "section": item.section, "evidence_kind": item.observation_kind,
              "evidence": item.text}
             for reference, item in passages.items()
@@ -1163,16 +1245,17 @@ Do not bring an earlier setup question into the review.
 
 Return strict JSON with this shape:
 {"answer": string, "chips": [string], "moment": string or null, "practise": boolean,
- "next_review_step": "practise" or "ideal" or null, "wording": object or null}
+ "intervention": string or null, "next_review_step": "practise" or "ideal" or null, "wording": object or null}
 Keep the answer short and conversational. When the reply uses an exact clip,
 put that passage's supplied reference into moment. Published feedback has M
 references, recorded delivery passages have D references, and "reviewed"
 names the exact clip in speaker_is_reviewing. "practice_passage" names the clip
 in passage_to_practise. Use a published M reference for
 the Picker's praise or intervention when one applies. Return null for advice
-that needs no clip. Set practise to true when a matching tool on the cited
-moment would help. The app checks which tool is available. Do not promise a
-particular exercise or demonstration. A supplied ideal_text.text is the project's
+that needs no clip. When the speaker asks what to improve, give one usable
+change in intervention, with practise true and the reference for the exact
+passage. If the change is to the words, give the sentence they can actually
+say in wording. The app checks which tool is available. A supplied ideal_text.text is the project's
 existing Ideal Text. When they ask to see it, offer it directly and set
 next_review_step to "ideal". For the review's practice step,
 use "practise". Otherwise return null. When wording is for a specific
@@ -1199,14 +1282,29 @@ their emotional readiness.
 
 When they want the Ideal Text or are done with the practice, offer the
 existing document and set next_review_step to "ideal" and moment to null.
-In "answer", say how the helper words can carry what worked into the next
-attempt. Put a short grounded view of what is ready and what needs rehearsal,
-plus one question about the next Take, in "after_ideal_text". Set
+In "answer", connect the helper words to a specific request, main point or
+short phrase that the speaker actually said. If they have no saved helper
+words yet, suggest choosing ones that will bring that part to mind next time.
+Put the next-Take question only in "after_ideal_text". Before the question,
+name one concrete choice to rehearse from the supplied evidence, such as
+how to land the decision request or connect it to the speaker's next step.
+Set
 "offer_next_take" to true when they ask for another rehearsal or what to
 practise in the next recording. If they ask to record again after Ideal
 Text has opened, answer directly and set "offer_next_take" to true without
 repeating the document. If they still want to work through moments, keep
 coaching before showing the document. Avoid scores and generic summaries.
+"""
+
+_LATER_FEEDBACK = """
+The current question moves forward in the same Take. Use recorded_passages
+in chronological order and the speaker's stated goal in their own turns.
+Refer to slides by their supplied slide_number. Say what advances the goal
+and what drifts, with actual details from each where present. For a drift,
+give a specific cut, bridge or line to say in answer, a short rehearsal cue
+in intervention, and set practise to true. Cite the passage that needs the
+change using its D reference. Keep earlier turns as background and leave
+the opening clip and next_review_step out of this reply.
 """
 
 
@@ -1429,6 +1527,12 @@ def _lightweight(question: str, state: ProjectChatState) -> bool:
 
 def _review_instruction(context: ProjectChatContext, state: ProjectChatState, question: str, review: dict) -> str:
     anchor = review["anchor"]
+    if review.get("live") and anchor["step"] == "practise" and context.ideal_text and _IDEAL_TEXT_REQUEST.search(question):
+        return ("The speaker asks to see Ideal Text after practising. Keep answer to one or two "
+                "sentences. Name helper words (słowa pomocnicze in Polish) explicitly and tie "
+                "them to one real request or phrase from ideal_text or exact_take_words. Suggest "
+                "one specific thing to rehearse on that material in after_ideal_text, followed "
+                "by one short question about recording again. Set next_review_step to 'ideal'.")
     if anchor["step"] == "practise" and context.ideal_text and _REMEMBER_PRACTICE.search(question):
         return ("The speaker is asking how to carry their practice into the next recording. "
                 "Offer the Take's existing document, named Ideal Text in the app. "
@@ -1454,10 +1558,34 @@ def _review_instruction(context: ProjectChatContext, state: ProjectChatState, qu
     if state.audience_known and _ASKS_FOR_EDIT.search(question):
         return ("Give one concrete edit as a statement. If the speaker separated the main listeners "
                 "from the decision-maker, address those listeners and leave the decision-maker for "
-                "a separate conversation. Keep their roles and goal as stated. For this wording "
-                "question, leave moment and next_review_step null and practise false. "
+                "a separate conversation. Keep their roles and goal as stated. Leave the separate "
+                "decision-maker out of the proposed words to say. For this wording question, "
+                "leave moment and next_review_step null and practise false. "
                 "Do not add a follow-up question.")
     return ""
+
+
+def _model_context(context: ProjectChatContext, state: ProjectChatState, question: str,
+                   passages: dict[str, Evidence], review: Optional[dict], later_only: bool) -> dict:
+    scoped = _prompt_context(context, state, passages)
+    prompt = {
+        "latest_user_message": question,
+        "project_chat_history": _project_history(context.project_rows),
+        "project_context": scoped,
+    }
+    if later_only:
+        scoped["current_take"] = {key: value for key, value in context.current_take.items() if key != "transcript"}
+        scoped["recent_takes_same_project"] = []
+        scoped["published_feedback_moments"] = []
+    elif review:
+        prompt["speaker_is_reviewing"] = review
+    return prompt
+
+
+def _has_delivery(passages: dict[str, Evidence], review: Optional[dict], later_only: bool) -> bool:
+    if not later_only and review and (review["anchor"].get("snippet_id") or "slide_index" in review["anchor"]):
+        return bool(review.get("delivery_observations"))
+    return any(item.source_type == "delivery_cues" for item in passages.values())
 
 
 def _model_turn(
@@ -1472,17 +1600,11 @@ def _model_turn(
     signed_question: Optional[str] = None,
     review: Optional[dict] = None,
     practice_referent: Optional[tuple[Source, str]] = None,
+    later_only: bool = False,
 ) -> tuple[Optional[dict], Any, int]:
-    history = _project_history(context.project_rows)
-    prompt = {
-        "latest_user_message": question,
-        "project_chat_history": history,
-        "project_context": _prompt_context(context, state, passages),
-    }
+    prompt = _model_context(context, state, question, passages, review, later_only)
     if signed_question is not None:
         prompt["this_turn_answers_signed_question"] = signed_question
-    if review:
-        prompt["speaker_is_reviewing"] = review
     if practice_referent:
         source, evidence = practice_referent
         prompt["passage_to_practise"] = {
@@ -1490,23 +1612,23 @@ def _model_turn(
         }
     user_prompt = json.dumps(prompt, ensure_ascii=False, sort_keys=True)
     system = _SYSTEM + "\n" + REFLECTION_RULES + coach_wording.WORDING_RULES + f"\nRequested tone: {_tone(question)}."
-    has_delivery = any(item.source_type == "delivery_cues" for item in passages.values())
-    if review and (review["anchor"].get("snippet_id") or "slide_index" in review["anchor"]):
-        has_delivery = bool(review.get("delivery_observations"))
     if context.current_take.get("transcript") or passages:
-        system += "\n\n" + (DELIVERY_RULES if has_delivery else WORDS_ONLY_RULES)
+        system += "\n\n" + (DELIVERY_RULES if _has_delivery(passages, review, later_only) else WORDS_ONLY_RULES)
     if practice_referent or _PASSAGE_BY_DESCRIPTION.search(question) or _WEAK_MOMENT_REQUEST.search(question) or wants_practice(question) or requested_chat_intervention(question):
         system += "\n\n" + PRACTICE_HANDOFF_RULES
     if review and (instruction := _review_instruction(context, state, question, review)):
         system += f"\n\nFor this turn: {instruction}"
     if review and review.get("live"):
         system += "\n\n" + _LIVE_FEEDBACK
+    if later_only:
+        system += "\n\n" + _LATER_FEEDBACK
     if _asks_about_an_unsure_moment(question):
         system += ("\n\nFor this turn, start by acknowledging that the speaker felt unsure in the passage. "
                    "If the speaker has not given a reason, end `answer` with a direct question "
                    "about what made that specific moment feel difficult, such as the example itself "
                    "or how to explain it to the listener. Use just one question mark in the answer, "
-                   "with any alternative reasons in that same question. Give one usable practice cue when requested.")
+                   "with any alternative reasons in that same question. If they ask to practise, "
+                   "put one concrete way to say or rehearse the named passage in intervention and set practise to true.")
     started = time.perf_counter()
     try:
         from services import llm
@@ -1641,6 +1763,29 @@ def _requested_output(context: ProjectChatContext, question: str, language: str,
     return answer, parsed
 
 
+def _complete_practice_reflection(answer: str, question: str, language: str) -> str:
+    if answer and "?" not in answer and _asks_about_an_unsure_moment(question) and not _GAVE_A_REASON.search(question):
+        follow_up = ("Co w tym fragmencie sprawiło, że zabrzmiał dla ciebie niepewnie?"
+                     if language == "pl" else "What made this part feel uncertain to you?")
+        return f"{answer}\n\n{follow_up}"
+    return answer
+
+
+def _pending_conversation_slot(context: ProjectChatContext) -> str | None:
+    last_bot = next(
+        (
+            row
+            for row in reversed(context.project_rows)
+            if row.get("role") == "bot"
+            and _dict(row.get("metadata")).get("project_chat") is True
+        ),
+        None,
+    )
+    last_meta = _dict((last_bot or {}).get("metadata"))
+    slot = last_meta.get("next_slot")
+    return str(slot) if slot in ("audience", "goal") else None
+
+
 def _answer_general(
     database: Any,
     user_id: str,
@@ -1652,22 +1797,8 @@ def _answer_general(
     review: Optional[dict] = None,
 ) -> tuple[dict, str]:
     captured_slots: dict[str, str] = {}
-    last_bot = next(
-        (
-            row
-            for row in reversed(context.project_rows)
-            if row.get("role") == "bot"
-            and _dict(row.get("metadata")).get("project_chat") is True
-        ),
-        None,
-    )
-    last_meta = _dict((last_bot or {}).get("metadata"))
-    slot = (
-        last_meta.get("next_slot")
-        if last_meta.get("next_slot") in ("audience", "goal")
-        else None
-    )
-    if not review and slot in ("audience", "goal") and _meaningful_slot_answer(question):
+    later = _later_passages(context, question, review)
+    if not review and later is None and (slot := _pending_conversation_slot(context)) and _meaningful_slot_answer(question):
         if _persist_slot(database, context, slot, question):
             captured_slots[slot] = question
             context = build_context(
@@ -1677,8 +1808,20 @@ def _answer_general(
                 take_session_id=context.take_session_id,
             )
             state = derive_state(context, context.project_rows, None)
-    practice_referent = _practice_referent(context, question, review)
-    passages = _passage_references(context, question, in_review=review is not None)
+    if later == {}:
+        no_later = (
+            "Nie mam dalszych fragmentów tego nagrania do sprawdzenia."
+            if target_language == "pl" else "I don’t have any later passages from this Take to review."
+        )
+        return _reply(
+            context, state, no_later, fast_path=True,
+            extra_metadata={"live_take_feedback": True} if _dict(review).get("live") else {},
+        )
+    practice_referent = (
+        _practice_referent(context, question, review) or _published_tempo_referent(database, context, question)
+        if later is None else None
+    )
+    passages = later if later is not None else _passage_references(context, question, in_review=review is not None)
     parsed, result, model_ms = _model_turn(
         context,
         state,
@@ -1689,8 +1832,11 @@ def _answer_general(
         passages=passages,
         review=review,
         practice_referent=practice_referent,
+        later_only=later is not None,
     )
     model_answer, parsed = _requested_output(context, question, target_language, review, parsed)
+    if practice_referent:
+        model_answer = _complete_practice_reflection(model_answer, question, target_language)
     if not review and _conversation_default(model_answer, state):
         model_answer = ""
     if review and not model_answer:
@@ -1710,12 +1856,14 @@ def _answer_general(
         captured_slots=captured_slots,
         extra_metadata=_answer_metadata(
             context, question, passages, parsed if model_answer else None, review, practice_referent,
+            later_only=later is not None,
         ),
     )
 
 
 def _reply_moment(context: ProjectChatContext, passages: dict[str, Evidence], parsed: dict,
-                  anchor: Optional[dict], practice_referent: Optional[tuple[Source, str]]) -> tuple[Optional[str], str]:
+                  anchor: Optional[dict], practice_referent: Optional[tuple[Source, str]], *,
+                  later_only: bool = False) -> tuple[Optional[str], str]:
     if practice_referent and parsed.get("next_review_step") != "ideal":
         referred = practice_referent[0]
         return referred.snippet_id, referred.take_id
@@ -1723,6 +1871,8 @@ def _reply_moment(context: ProjectChatContext, passages: dict[str, Evidence], pa
     source = _passage_source(passages, reference)
     if source and source.snippet_id:
         return source.snippet_id, source.take_id
+    if later_only:
+        return None, context.take_session_id
     if anchor and anchor.get("step") != "ideal" and (reference == "reviewed" or "moment" not in parsed):
         return anchor.get("snippet_id"), context.take_session_id
     snippet = next((
@@ -1735,7 +1885,8 @@ def _reply_moment(context: ProjectChatContext, passages: dict[str, Evidence], pa
 
 def _answer_metadata(context: ProjectChatContext, question: str, passages: dict[str, Evidence],
                      parsed: Optional[dict], review: Optional[dict],
-                     practice_referent: Optional[tuple[Source, str]] = None) -> dict:
+                     practice_referent: Optional[tuple[Source, str]] = None, *,
+                     later_only: bool = False) -> dict:
     anchor = review["anchor"] if review else None
     metadata = {"review_focus": anchor} if anchor else {}
     if not parsed:
@@ -1748,8 +1899,8 @@ def _answer_metadata(context: ProjectChatContext, question: str, passages: dict[
     wording = coach_wording.proposal(raw_wording, arc_id=context.arc_id, take_id=wording_take)
     if wording:
         metadata[coach_wording.META] = wording
-    next_step = parsed.get("next_review_step")
-    snippet, moment_take = _reply_moment(context, passages, parsed, anchor, practice_referent)
+    next_step = None if later_only else parsed.get("next_review_step")
+    snippet, moment_take = _reply_moment(context, passages, parsed, anchor, practice_referent, later_only=later_only)
     if anchor and next_step == "practise" and not snippet:
         metadata["review_destination"] = {"step": "practise"}
     if next_step == "ideal" and (anchor or context.ideal_text):
@@ -1767,19 +1918,21 @@ def _answer_metadata(context: ProjectChatContext, question: str, passages: dict[
                 )
             ),
         )
+        _attach_intervention(metadata, parsed)
     if _dict(review).get("live"):
         metadata.update(_live_feedback_metadata(context, question, parsed, metadata))
     return metadata
 
 
-def _live_feedback_metadata(context: ProjectChatContext, question: str, parsed: dict, reply: dict) -> dict:
-    metadata: dict = {"live_take_feedback": True}
-    if _dict(reply.get("coach_moment")).get("practise") is True:
+def _attach_intervention(metadata: dict, parsed: dict) -> None:
+    if metadata["coach_moment"]["practise"]:
         intervention = _text(parsed.get("intervention"), 360)
         if intervention and not _FORBIDDEN_OUTPUT.search(intervention):
-            metadata["chat_artifact"] = {
-                "version": 1, "title": intervention, "intervention": intervention,
-            }
+            metadata["chat_artifact"] = {"version": 1, "title": intervention, "intervention": intervention}
+
+
+def _live_feedback_metadata(context: ProjectChatContext, question: str, parsed: dict, reply: dict) -> dict:
+    metadata: dict = {"live_take_feedback": True}
     if context.ideal_text and parsed.get("next_review_step") == "ideal":
         after = _text(parsed.get("after_ideal_text"), 420)
         if after and after.count("?") <= 1 and not (_FORBIDDEN_OUTPUT.search(after) or _READINESS_SCORE.search(after)):

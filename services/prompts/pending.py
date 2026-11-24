@@ -85,6 +85,7 @@ REGISTER = {
     "project_chat.system": SourceRef("services/project_chat.py", "_SYSTEM"),
     "project_chat.review": SourceRef("services/project_chat.py", "_review_instruction"),
     "project_chat.live_feedback": SourceRef("services/project_chat.py", "_LIVE_FEEDBACK"),
+    "project_chat.later_feedback": SourceRef("services/project_chat.py", "_LATER_FEEDBACK"),
     "project_chat.wording": SourceRef("services/coach_wording.py", "WORDING_RULES"),
     "speaking_coach.wording": SourceRef("services/coach_wording.py", "WORDING_RULES"),
     "speaking_coach.response": SourceRef("services/speaking_coach.py", "_RESPONSE_SCHEMA"),

@@ -171,6 +171,52 @@ def ensure(database: Any, practice: dict, *, user_id: str, principal_id: str,
     return state(database, practice, cycle, sign=sign)
 
 
+def prepare_chat_example(database: Any, *, arc_id: str, take_id: str,
+                         snippet_id: str, user_id: str) -> dict:
+    """Use the existing AI-voice lane for an explicit request on a chat clip."""
+    from services.ai_voice_clone import available_to
+    from services.lounge_clips import owned_chat_moment
+    from services.refusal import Refusal
+    from services.take_door import practice_allowed
+
+    moment = owned_chat_moment(database, user_id, take_id, snippet_id)
+    if not moment or str(moment[0]["arc_id"]) != arc_id:
+        raise Refusal("NOT_FOUND", "This recording fragment is unavailable.", 404)
+    if (not available_to(user_id) or _voice_turned_off(database, user_id)
+            or not practice_allowed(database, take_id)):
+        return {"demo": "none", "clip": None}
+    practice = database.get_confident_voice_practice_by_moment(take_id, snippet_id, user_id)
+    if not practice:
+        practice = _start_chat_practice(database, arc_id, take_id, snippet_id, user_id)
+    principal = principal_for(database, take_id, user_id)
+    return {"practice_id": str(practice["id"]), **ensure(
+        database, practice, user_id=user_id, principal_id=principal,
+    )}
+
+
+def _start_chat_practice(database: Any, arc_id: str, take_id: str, snippet_id: str, user_id: str) -> dict:
+    from services.intervention_spend import paragraph_index_at
+    from services.practice_start import start_practice
+    from services.refusal import Refusal
+    from services.transcript_document import build_transcript_document
+
+    doc = build_transcript_document(arc_id, database=database, session_id=take_id) or {}
+    piece = next((item for item in doc.get("pieces", ()) if item["snippet_id"] == snippet_id), None)
+    if not piece:
+        raise Refusal("MOMENT_UNAVAILABLE", "There are no recorded words for this fragment.", 409)
+    evidence = {
+        "project_id": arc_id, "take_session_id": take_id,
+        "slide_index": piece.get("slide_index") or 0,
+        "paragraph_index": paragraph_index_at(doc["text"], piece["start"]),
+        "span": {"start": piece["start"], "end": piece["end"]},
+    }
+    practice, _ = start_practice(
+        database, snippet_id=snippet_id, body={"kind": "plain", "evidence": evidence},
+        user_id=user_id, answer=None,
+    )
+    return practice
+
+
 def _has_video(practice: dict) -> bool:
     return (str((practice or {}).get("kind")) == "exercise"
             and bool(((practice or {}).get("exercise_snapshot") or {}).get("explanation_video_url")))

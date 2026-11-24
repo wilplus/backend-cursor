@@ -356,10 +356,15 @@
       "module": "coaching_evidence",
       "sha256": "b37d1272d2ae4b5637161e95d8d89d13acbcd8b9401a4283150ddc6883f074ec"
     },
+    "project_chat.later_feedback": {
+      "kind": "source_ref",
+      "module": "pending",
+      "sha256": "e4838c6e50d11b94b2dec5e6b8be60c0463052bfd40c8ffb9b9afd90d5f3a83c"
+    },
     "project_chat.live_feedback": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "92604560a698072b7832d0b355984ba526334db932cc6909365d2323e8da86ed"
+      "sha256": "6b7e54c1082c435eb1ffc1d1cb3aa994fba15c9f0c7573e26c82b81a270fe692"
     },
     "project_chat.practice_handoff": {
       "kind": "static",
@@ -374,12 +379,12 @@
     "project_chat.review": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "a399c0cd49adcb4af9b338d3036114409dcb651a748906134aee305311da8585"
+      "sha256": "086f24ab08ad2df2e5d225079fbcfbcec3bbde6e37dd27c5ea5c7dec004babaa"
     },
     "project_chat.system": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "f5d90102e3438f943dbb6eee7f432dc55dea8ea40c711c42f18fcc9cabb89774"
+      "sha256": "75524c3d71efc1674a5608a4efc70dc1f590229aac85f056eea4a955489e6c58"
     },
     "project_chat.wording": {
       "kind": "source_ref",
