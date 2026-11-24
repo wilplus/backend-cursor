@@ -10,7 +10,8 @@ OUTCOME
       (it has no project to archive, so it blocked "One project at a time").
   O4  Each Take carries the upload key it was sent with, so a Take kept on
       the phone knows whether it arrived (N556 item 3).
-PROVES   O1, O2, O4 -> test_trainings_group_by_talk_and_mark_ideal_ready
+  O5  Since N689, practice and playback can read each Take's actual range.
+PROVES   O1, O2, O4, O5 -> test_trainings_group_by_talk_and_mark_ideal_ready
          O3     -> test_a_training_import_is_not_a_project
 WHY      Founder 2026-07-13 (arc-grouped trainings). The save-at-publish half
          (POST /v2/internal/publish-session-results) is retired and answers
@@ -25,7 +26,7 @@ from flask import Flask, request
 
 from routes.v2 import user_sessions
 from services.db import db
-from services.user_trainings import _coverage, _practice_summary
+from services.user_trainings import _coverage
 
 SLIDES = {"topic": "T", "slides": [{"title": "A"}, {"title": "B"}]}
 
@@ -37,12 +38,16 @@ def _take(sid, arc, index):
 
 
 def test_trainings_group_by_talk_and_mark_ideal_ready():
-    rows = [{**_take("s2", "ready", 2), "upload_idempotency_key": "k2"},
-            _take("s1", "ready", 1), _take("s3", "half", 1)]
+    rows = [
+        {**_take("s2", "ready", 2), "upload_idempotency_key": "k2",
+         "intake_context": {**SLIDES, "slide_advances": [{"slide": 2}]}},
+        {**_take("s1", "ready", 1),
+         "intake_context": {**SLIDES, "slide_advances": [{"index": 0}, {"index": 1}]}},
+        _take("s3", "half", 1),
+    ]
     edits = {"ready": {0: "Edited.", 1: "Also edited."}, "half": {0: "Edited."}}
     with patch.object(db.takes, "list_user_arc_sessions", return_value=rows), \
             patch.object(db, "list_arc_batch_deliveries", return_value={}), \
-            patch.object(db, "get_coach_snippet_drafts_by_sessions", return_value={}), \
             patch.object(db, "get_coach_best_presentation_edits_for_arcs",
                          return_value=edits) as batched_edits, \
             patch("services.project_deletion.with_deletion_state",
@@ -55,6 +60,11 @@ def test_trainings_group_by_talk_and_mark_ideal_ready():
     assert set(cards) == {"ready", "half"}
     assert [t["session_id"] for t in cards["ready"]["takes"]] == ["s1", "s2"]
     assert [t["upload_key"] for t in cards["ready"]["takes"]] == [None, "k2"]
+    assert [t["recorded_range"] for t in cards["ready"]["takes"]] == [
+        {"start_slide": 1, "end_slide": 2}, {"start_slide": 2, "end_slide": 2},
+    ]
+    assert "recorded_range" not in cards["half"]["takes"][0]
+    assert {"practice_progress", "practice_chunks"}.isdisjoint(cards["ready"])
     assert cards["ready"]["take_count"] == 2
     assert cards["ready"]["ideal_ready"] is True
     assert cards["half"]["ideal_ready"] is False
@@ -76,7 +86,6 @@ def test_picker_preserves_per_project_coach_read_fallback_on_batch_failure():
     edits = {"ready": {0: "Edited.", 1: "Also edited."}, "half": {0: "Edited."}}
     with patch.object(db.takes, "list_user_arc_sessions", return_value=rows), \
             patch.object(db, "list_arc_batch_deliveries", return_value={}), \
-            patch.object(db, "get_coach_snippet_drafts_by_sessions", return_value={}), \
             patch.object(db, "get_coach_best_presentation_edits_for_arcs",
                          return_value=None), \
             patch.object(db, "get_coach_best_presentation_edits",
@@ -92,50 +101,6 @@ def test_picker_preserves_per_project_coach_read_fallback_on_batch_failure():
     assert cards["ready"]["ideal_ready"] is True
     assert cards["half"]["ideal_ready"] is False
     assert per_arc_edits.call_count == 2
-
-
-def test_practice_history_groups_exact_ranges_and_reads_delivery_not_attempts():
-    sessions = [
-        {**_take("a1", "a", 1), "intake_context": {
-            **SLIDES, "slides": [{}] * 10,
-            "slide_advances": [{"index": 0}, {"index": 4}],
-        }},
-        {**_take("a2", "a", 2), "intake_context": {
-            **SLIDES, "slides": [{}] * 10,
-            "slide_advances": [{"index": 0}, {"index": 4}],
-        }},
-        {**_take("b1", "a", 3), "intake_context": {
-            **SLIDES, "slides": [{}] * 10,
-            "slide_advances": [{"index": 5}, {"index": 9}],
-        }},
-    ]
-    drafts = {
-        "a2": [{"surfaced": True, "feedback_family": "rewrite_clarity"}],
-        "b1": [{"surfaced": True, "feedback_family": "confident_voice"}],
-    }
-
-    progress, chunks = _practice_summary(sessions, drafts, 10)
-
-    assert progress == 58
-    assert chunks == [
-        {"start_slide": 1, "end_slide": 5, "attempts": 2,
-         "delivery_label": "Not yet there", "latest_session_id": "a2"},
-        {"start_slide": 6, "end_slide": 10, "attempts": 1,
-         "delivery_label": "Strong delivery", "latest_session_id": "b1"},
-    ]
-
-
-def test_unpractised_slides_keep_project_progress_grounded():
-    sessions = [{**_take("only", "a", 1), "intake_context": {
-        **SLIDES, "slides": [{}] * 10,
-        "slide_advances": [{"index": 0}, {"index": 4}],
-    }}]
-    drafts = {"only": [{"surfaced": True,
-                         "feedback_family": "confident_voice"}]}
-
-    progress, _chunks = _practice_summary(sessions, drafts, 10)
-
-    assert progress == 45
 
 
 class _Rows:

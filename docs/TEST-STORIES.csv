@@ -2262,11 +2262,13 @@ O4  A coach's video plays only while it is their word's current one; a
 video they replaced or removed never plays, an older ""Later · from your
 coach"" bubble is left out, and each bubble says whether it is new.
 O5  My practice tries from several practices on one page all get fresh
-links, and the practices are read side by side, not one after another.","O1 -> test_own_clip_is_resigned_and_another_users_is_not
+links, and the practices are read side by side, not one after another.
+O6  A request for AI audio can reuse only the practice of the exact authorised moment.","O1 -> test_own_clip_is_resigned_and_another_users_is_not
 O2 -> test_one_page_gets_fresh_links_decks_and_flags_from_batched_reads
 O3 -> test_an_older_page_carries_no_flags_and_a_failed_step_costs_only_itself
 O4 -> test_a_coach_video_plays_only_while_it_is_the_word_s_current_one
-O5 -> test_practice_tries_from_several_practices_are_read_side_by_side",
+O5 -> test_practice_tries_from_several_practices_are_read_side_by_side
+O6 -> test_requested_audio_looks_up_a_practice_for_only_the_authorized_moment",
 tests/test_lounge_place.py,Story,"As a person with the chat builder, I want Will's chat to hold only my model, my chat's setup and what needs me, the speaking chat to hold everything about my Takes, and ""Principles"" the principles coaching, without anything being stored differently (N635, widened to three places).","O1  Every writer of the Lounge is named here, and each kind of row it
 writes is placed in exactly one chat; a new writer that this list
 does not name fails the test.
@@ -4915,7 +4917,8 @@ with a slide still uncorrected is not.
 O3  A coach's training import is never in the coach's own project list
 (it has no project to archive, so it blocked ""One project at a time"").
 O4  Each Take carries the upload key it was sent with, so a Take kept on
-the phone knows whether it arrived (N556 item 3).","O1, O2, O4 -> test_trainings_group_by_talk_and_mark_ideal_ready
+the phone knows whether it arrived (N556 item 3).
+O5  Since N689, practice and playback can read each Take's actual range.","O1, O2, O4, O5 -> test_trainings_group_by_talk_and_mark_ideal_ready
 O3     -> test_a_training_import_is_not_a_project","Founder 2026-07-13 (arc-grouped trainings). The save-at-publish half (POST /v2/internal/publish-session-results) is retired and answers 410 (routes/v2/canonical_publish.py), so it has no test here."
 tests/test_v3_end_to_end_production_shape.py,Story,"As a speaker, I want my answer to Confident Voice feedback recorded as a valid decision on real production-shaped data, so that the feedback loop works outside tests.","O1  On production-shaped data (a transcript and a DIFFERENT, shorter Ideal
 Text, snapshot-bound), the chain runs end to end and serves a Confident

@@ -55,7 +55,10 @@ def v2_user_lounge_moment_get(snippet_id):
     if not (_is_valid_uuid(snippet_id) and _is_valid_uuid(take)):
         return jsonify({"code": "INVALID_INPUT"}), 400
     try:
-        moment = read_chat_moment(db, str(request.user_id), take, snippet_id)
+        moment = read_chat_moment(
+            db, str(request.user_id), take, snippet_id,
+            include_practice=request.args.get("intervention") == "ai_audio",
+        )
     except Exception:
         logger.warning("chat moment could not be read", exc_info=True)
         return jsonify({"code": "MOMENT_UNAVAILABLE"}), 503

@@ -2011,6 +2011,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O3** An older page carries no flags, and a failing step (such as decks) costs only that step; my clips still refresh.
 - **O4** A coach's video plays only while it is their word's current one; a video they replaced or removed never plays, an older "Later · from your coach" bubble is left out, and each bubble says whether it is new.
 - **O5** My practice tries from several practices on one page all get fresh links, and the practices are read side by side, not one after another.
+- **O6** A request for AI audio can reuse only the practice of the exact authorised moment.
 
 ### As a person with the chat builder, I want Will's chat to hold only my model, my chat's setup and what needs me, the speaking chat to hold everything about my Takes, and "Principles" the principles coaching, without anything being stored differently (N635, widened to three places).
 
@@ -4254,6 +4255,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O2** A talk is ideal_ready once the coach has corrected every slide; a talk with a slide still uncorrected is not.
 - **O3** A coach's training import is never in the coach's own project list (it has no project to archive, so it blocked "One project at a time").
 - **O4** Each Take carries the upload key it was sent with, so a Take kept on the phone knows whether it arrived (N556 item 3).
+- **O5** Since N689, practice and playback can read each Take's actual range.
 
 *Why:* Founder 2026-07-13 (arc-grouped trainings). The save-at-publish half (POST /v2/internal/publish-session-results) is retired and answers 410 (routes/v2/canonical_publish.py), so it has no test here.
 

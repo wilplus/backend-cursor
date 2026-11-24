@@ -4,6 +4,8 @@
 
 ## Chat integration, 18 November 2026
 
+The project listing carries each Take's own recorded slide range for review and rehearsal. The retired Progress card no longer requires a project-wide delivery score, attempt grouping, or a second read of coach feedback.
+
 Under N663 and N665, the existing authorized `POST /v2/chat/query` remains
 the single transport, including its durable claim, terminal receipt,
 replay and charging. An explicit `arc_id` selects `services/project_chat.py`:
@@ -27,6 +29,10 @@ budget. The selected evidence reference serves the reply's exact recording
 and requests its currently available practice. A follow-up can resolve the
 last cited authorised Take from the existing project history in the same
 snippet batch, including when it is older than the recent Takes.
+An explicit request for AI audio, Sniper, or coach video uses that same
+reference. The chat receives the requested intervention with the clip. An
+AI example can reuse the saved practice of the cited Take after the same
+ownership check.
 A direct request to play or show that fragment can also match exact words from
 recent project turns when a prior reply carried no clip reference. The reply
 uses the recorded text and clip. A request to record the speaker's version can

@@ -9,29 +9,17 @@ empty list that reads as "no projects"), and the coach-edits check behind
 with slides. The picker keeps today's behaviour exactly (LIVE LOOP): a
 failed sessions read is an empty list and the check runs per project.
 
-Per training: the takes (all recordings, take order), ``batch_verified``
-(the coach's explicit arc publish landed), ``ideal_ready``, and the compact
-practice history used by the project chat. A chunk keeps its own range,
-attempt count, and plain-language delivery label. The only number shown to
-the speaker is the project-level progress percentage; detector scores remain
-private implementation evidence.
+Each project carries its ordered Takes, including each Take's recorded
+slide range when the recording has slide advances. The project also reports
+which distinct parts have been practised and whether its Ideal Text is ready.
 """
 from __future__ import annotations
 
-import logging
 from typing import Any, Callable, Optional
 
 from services.take_review_history import is_ready as _review_ready
 
 
-_DELIVERY_LABELS = (
-    (80, "Strong delivery"),
-    (60, "Good"),
-    (40, "Almost"),
-    (0, "Not yet there"),
-)
-
-logger = logging.getLogger(__name__)
 _DECKLESS_PARTS = 3
 
 
@@ -66,6 +54,7 @@ def _deck(sessions: list) -> tuple[Optional[str], int, Any]:
 
 def _take(s: dict) -> dict:
     published = bool(s.get("results_published_at"))
+    span = _practice_range(s)
     return {
         "session_id": str(s.get("id")),
         "take_index": s.get("take_index"),
@@ -80,6 +69,7 @@ def _take(s: dict) -> dict:
         # 2026-07-15) — alias kept beside coach_reviewed for the FE.
         "feedback_available": published,
         "review_available": _review_ready(s),
+        **({"recorded_range": {"start_slide": span[0], "end_slide": span[1]}} if span else {}),
     }
 
 
@@ -117,81 +107,6 @@ def _coverage(sessions: list, total: int, has_deck: bool) -> dict:
             "unit": "slides" if has_deck else "sections"}
 
 
-def _delivery_read(rows: list[dict]) -> tuple[int, str]:
-    """Translate surfaced feedback into the four signed product labels.
-
-    Attempts never improve this read. Praise/confident evidence raises it; a
-    clarity rewrite lowers it. No evidence stays conservatively at the first
-    label instead of inventing confidence.
-    """
-    families = [str(row.get("feedback_family") or "") for row in rows
-                if isinstance(row, dict) and row.get("surfaced")]
-    positive = sum(f in ("confident_voice", "great_formulation", "strong")
-                   for f in families)
-    rewrite = sum(f in ("rewrite_clarity", "rewrite_for_clarity", "to_work_on")
-                  for f in families)
-    if positive and not rewrite:
-        score = 90
-    elif positive > rewrite:
-        score = 70
-    elif positive and positive == rewrite:
-        score = 50
-    else:
-        score = 25
-    label = next(label for floor, label in _DELIVERY_LABELS if score >= floor)
-    return score, label
-
-
-def _practice_summary(sessions: list[dict], drafts_by_session: dict,
-                      n_slides: int) -> tuple[int, list[dict]]:
-    """Project progress and chronological exact-range chunks.
-
-    For overlapping practice, every slide uses the latest attempt that
-    covered it. Unpractised slides contribute zero, so the top bar describes
-    the whole presentation rather than effort or attempt count.
-    """
-    grouped: dict[tuple[int, int], dict] = {}
-    for order, session in enumerate(sessions):
-        slide_range = _practice_range(session)
-        if slide_range is None:
-            continue
-        sid = str(session.get("id"))
-        score, label = _delivery_read(list((drafts_by_session or {}).get(sid) or []))
-        chunk = grouped.setdefault(slide_range, {
-            "start_slide": slide_range[0],
-            "end_slide": slide_range[1],
-            "attempts": 0,
-            "delivery_label": label,
-            "latest_session_id": sid,
-            "_score": score,
-            "_order": order,
-        })
-        chunk.update({
-            "attempts": int(chunk["attempts"]) + 1,
-            "delivery_label": label,
-            "latest_session_id": sid,
-            "_score": score,
-            "_order": order,
-        })
-
-    chunks = sorted(grouped.values(), key=lambda chunk: int(chunk["_order"]))
-    if n_slides > 0:
-        per_slide = [0] * n_slides
-        for chunk in chunks:
-            first = max(1, int(chunk["start_slide"]))
-            last = min(n_slides, int(chunk["end_slide"]))
-            for slide in range(first, last + 1):
-                per_slide[slide - 1] = int(chunk["_score"])
-        progress = round(sum(per_slide) / n_slides)
-    elif chunks:
-        progress = round(sum(int(chunk["_score"]) for chunk in chunks) / len(chunks))
-    else:
-        progress = 0
-    public_chunks = [{key: value for key, value in chunk.items()
-                      if not key.startswith("_")} for chunk in chunks]
-    return progress, public_chunks
-
-
 def _coach_finalized(edits: dict, n_slides: int) -> bool:
     """Cheap coach_finalized mirror (same rule as /progress): every deck
     slide coach-corrected. Deckless arcs become ideal_ready via the batch
@@ -201,12 +116,10 @@ def _coach_finalized(edits: dict, n_slides: int) -> bool:
 
 
 def _training(aid: str, sess: list, delivered: Optional[dict],
-              edits_for: Callable[[str], dict], drafts_by_session: dict) -> dict:
+              edits_for: Callable[[str], dict]) -> dict:
     from services.coach_video_storage import refreshed_media_url
     from services.slide_selection import TAKES_TARGET
     topic, n_slides, cover_ref = _deck(sess)
-    practice_progress, practice_chunks = _practice_summary(
-        sess, drafts_by_session, n_slides)
     finalized = _coach_finalized(edits_for(aid) if n_slides else {}, n_slides)
     return {
         "arc_id": aid,
@@ -227,8 +140,6 @@ def _training(aid: str, sess: list, delivered: Optional[dict],
         "delivered_at": (delivered or {}).get("published_at"),
         "ideal_ready": bool(delivered) or finalized,
         "practice_coverage": _coverage(sess, n_slides, bool(cover_ref)),
-        "practice_progress": practice_progress,
-        "practice_chunks": practice_chunks,
     }
 
 
@@ -247,17 +158,6 @@ def list_trainings(database: Any, user_id: Any, *, every_project: bool) -> list:
     from services.parallel import run_in_parallel
 
     arc_ids = list(by_arc.keys())
-    spoken_ids = [str(row.get("id")) for rows in by_arc.values()
-                  for row in _spoken(rows) if row.get("id")]
-
-    def read_drafts() -> dict:
-        try:
-            return database.get_coach_snippet_drafts_by_sessions(spoken_ids) or {}
-        except Exception:
-            # Keep the project list available if feedback evidence is briefly
-            # unreadable; the conservative fallback is "Not yet there".
-            logger.warning("practice feedback evidence unreadable", exc_info=True)
-            return {}
 
     def read_edits() -> Any:
         if every_project:
@@ -267,7 +167,7 @@ def list_trainings(database: Any, user_id: Any, *, every_project: bool) -> list:
 
     def read_project_states() -> list[dict]:
         # Deletion/archive state depends only on the arc ids too. Read it on
-        # the same latency wave as the feedback batches; applying it to tiny
+        # the same latency wave as the delivery and edits batches; applying it to tiny
         # placeholder rows preserves the existing best-effort policy while
         # keeping a second group of database calls off the critical path.
         return with_deletion_state(
@@ -276,12 +176,9 @@ def list_trainings(database: Any, user_id: Any, *, every_project: bool) -> list:
             every_project,
         )
 
-    # All four reads depend only on the session list and on none of each
-    # other's results. Overlap their database latency while preserving the
-    # same calls, fallbacks and output shape.
-    deliveries, drafts_by_session, batched, project_states = run_in_parallel(
+    # Deliveries, edits and project state all depend on the same arc ids.
+    deliveries, batched, project_states = run_in_parallel(
         lambda: database.list_arc_batch_deliveries(arc_ids) or {},
-        read_drafts,
         read_edits,
         read_project_states,
     )
@@ -299,7 +196,7 @@ def list_trainings(database: Any, user_id: Any, *, every_project: bool) -> list:
         spoken = _spoken(sess)
         if spoken:
             trainings.append(_training(
-                aid, spoken, deliveries.get(aid), edits_for, drafts_by_session))
+                aid, spoken, deliveries.get(aid), edits_for))
     state_by_arc = {
         str(row.get("arc_id")): row
         for row in (project_states or [])
