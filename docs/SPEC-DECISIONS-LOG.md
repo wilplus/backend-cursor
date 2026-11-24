@@ -17853,3 +17853,11 @@ The rules: frontend [Feedback walk and chat](https://github.com/wilplus/frontend
 Finish makes the Take available in its own chat. Closing progress opens that chat immediately, including when its first recording is still uploading. A new chat appears under Speaking Coach in the sidebar. The speaker's recording comes first, followed by the processing bubble. Tapping the processing bubble reopens the same progress screen. A Take recorded in an existing project opens that project's chat. Setup cancellation and the explicit discard action keep their existing behavior.
 
 The rules: [Recording screens](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md) and [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N685 · Live Take feedback is a conversation in the project chat** (founder, Take design Codex chat, 23 November 2026). Updates N677 and N682 for live project feedback.
+
+Open with the strongest grounded moment from the Take and ask how it sounded to the speaker. A typed or recorded answer continues in the same composer. Offer one moment at a time. Give another strength when asked. Pair a moment to improve with an intervention that can be done in the chat. Use the conversation to decide when the speaker wants an improvement. Answer their questions in the thread as they ask them.
+
+When practice is done for now, offer the Ideal Text inline with its slides and helper words. Below it, give a brief readiness assessment in words based on the Take and recent practice, then invite another rehearsal. The offered action is the existing **Record the next take** link. The conversation can be folded into the same Take recap and reopened for playback. The fresh flow uses the Take’s own praise and feedback in place of canned announcements.
+
+The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
