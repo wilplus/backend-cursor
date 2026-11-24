@@ -324,6 +324,36 @@ def _attach_deckless_context(
         pass
 
 
+def transcript_thoughts(snippets):
+    """Group absolute ASR word times across piece boundaries, once per word."""
+    import math
+    import re
+    words = set()
+    for word in _word_union(snippets):
+        if not isinstance(word, dict):
+            continue
+        start, end, text = word.get("start"), word.get("end"), word.get("word")
+        if not isinstance(text, str) or not text.strip():
+            continue
+        if not all(isinstance(x, (int, float)) and math.isfinite(x) for x in (start, end)):
+            continue
+        if 0 <= start <= end:
+            words.add((round(start * 1000), round(end * 1000), text.strip()))
+    spans = []
+    phrase = []
+    for start, end, text in sorted(words):
+        if not phrase:
+            first = start
+        phrase.append(text)
+        if re.search(r'[.!?…]["”»)]*$', text):
+            if end > first:
+                spans.append(dict(text=" ".join(phrase), start=first, end=end))
+            phrase = []
+    if phrase and end > first:
+        spans.append(dict(text=" ".join(phrase), start=first, end=end))
+    return spans
+
+
 def attach_readout_context(
     database: Any,
     session_id: str,
@@ -341,6 +371,9 @@ def attach_readout_context(
     ``session_row`` is the session when the caller holds it: its
     ``intake_context`` and ``slide_transcripts`` are used as read, and a
     column the row does not carry is read here as before."""
+    thoughts = transcript_thoughts(snippets)
+    if thoughts:
+        result["timed_thoughts"] = thoughts
     _attach_piece_instant_chunks(
         result,
         output_snippets,
