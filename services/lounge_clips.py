@@ -24,17 +24,41 @@ from typing import Any, Callable, Optional
 logger = logging.getLogger(__name__)
 
 
+_CHAT_INTERVENTION = re.compile(
+    r"\b(?:(?P<sniper>sniper|perimeter)|(?P<ai_audio>ai (?:audio|voice|example)|"
+    r"(?:przykład|głos|nagranie) ai)|(?P<coach_video>coach(?:'s)? (?:video|clip)|"
+    r"(?:wideo|film) (?:od |z )?trener\w*))\b", re.IGNORECASE,
+)
+_REQUEST_ACTION = re.compile(
+    r"\b(?:show|play|hear|listen|try|give|use|want|see|pokaż\w*|odtwórz\w*|posłucha\w*|"
+    r"zobacz\w*|sprób\w*|chcę|puś\w*|daj)\b", re.IGNORECASE,
+)
+_NEGATED_REQUEST = re.compile(
+    r"^(?:please )?(?:don['’]t|do not)\b|\bnie (?:poka[żz]\w*|odtwarz\w*|chcę)\b", re.IGNORECASE,
+)
+
+
+def requested_chat_intervention(question: str) -> Optional[str]:
+    match = _CHAT_INTERVENTION.search(question)
+    if not match or _NEGATED_REQUEST.search(question):
+        return None
+    if _REQUEST_ACTION.search(question) or not (question[:match.start()] + question[match.end():]).strip(" ?!."):
+        return match.lastgroup
+    return None
+
+
 def chat_moment_reference(arc_id: str, take_id: str, snippet_id: str,
-                          *, practise: bool = False) -> dict:
+                          *, practise: bool = False, intervention: Optional[str] = None) -> dict:
     """The durable chat reference. Playback gets a fresh link on read."""
     return {
         "arc_id": arc_id, "take_session_id": take_id, "snippet_id": snippet_id,
         "practise": practise,
+        **({"intervention": intervention} if intervention else {}),
     }
 
 
 def read_chat_moment(database: Any, user_id: str, take_id: str,
-                     snippet_id: str) -> Optional[dict]:
+                     snippet_id: str, *, include_practice: bool = False) -> Optional[dict]:
     """Resolve exactly the requested moment after checking current access."""
     from services.project_deletion import ProjectDeletionService
     from services.snippet_audio_url import resolve_snippet_audio_url
@@ -60,10 +84,25 @@ def read_chat_moment(database: Any, user_id: str, take_id: str,
     url = resolve_snippet_audio_url(snippet, database)
     if not url:
         return None
+    practice_id = _chat_moment_practice(database, user_id, take_id, snippet_id) if include_practice else None
     return {
         "arc_id": arc_id, "take_index": take.get("take_index"),
         "audio_url": url, "start_offset_ms": start, "duration_ms": length,
+        **({"practice_id": practice_id} if practice_id else {}),
     }
+
+
+def _chat_moment_practice(database, user_id: str, take_id: str, snippet_id: str) -> Optional[str]:
+    """A saved practice follows the original clip, including on an older Take."""
+    from services.ai_voice_clip import in_voice_lane
+    from services.take_door import practice_allowed
+
+    if not practice_allowed(database, take_id):
+        return None
+    practice = database.get_confident_voice_practice_by_moment(take_id, snippet_id, user_id)
+    if not practice or not practice.get("id") or not in_voice_lane(practice):
+        return None
+    return str(practice["id"])
 
 
 class _SessionSnippets:

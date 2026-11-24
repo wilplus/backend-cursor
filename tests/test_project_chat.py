@@ -549,12 +549,13 @@ def test_ordinary_project_reply_uses_its_own_vocal_evidence_and_attaches_the_pas
     }
 
 
-@pytest.mark.parametrize(("question", "answer"), [
-    ("actually I would like to try sniper here?", "Give the decision a little more room."),
-    ("Can I try the AI audio for this passage?", "Give the decision a little more room."),
-    ("Pokaż tutaj wideo od trenera", "Zrób trochę więcej miejsca na decyzję."),
+@pytest.mark.parametrize(("question", "intervention"), [
+    ("actually I would like to try sniper here?", "sniper"),
+    ("Can I try the AI audio for this passage?", "ai_audio"),
+    ("pokażesz mi AI audio tego?", "ai_audio"),
+    ("Pokaż tutaj wideo od trenera", "coach_video"),
 ])
-def test_a_practice_follow_up_keeps_the_saved_moment_in_its_take(question, answer):
+def test_a_practice_follow_up_keeps_the_saved_moment_in_its_take(question, intervention):
     database = FakeDB()
     previous = {"arc_id": ARC, "take_session_id": TAKE, "snippet_id": "s2", "practise": False}
     for take, snippet, day in ((TAKE, "s2", 18), ("take-a1", "s2", 19)):
@@ -567,20 +568,51 @@ def test_a_practice_follow_up_keeps_the_saved_moment_in_its_take(question, answe
             },
         })
 
-    def generate(**kwargs):
-        passage = json.loads(kwargs["user"])["passage_to_practise"]
-        assert "speaking to the board" in passage["evidence"]
-        result = _config_result(answer)
-        result.parsed = {"answer": answer, "moment": None, "practise": False}
-        return result
-
-    with patch("services.llm.chat_complete", generate):
+    with patch("services.llm.chat_complete") as generate:
         reply, _ = project_chat.answer(database, USER, ARC, question)
+    generate.assert_not_called()
     metadata = reply["row_metadata"]
-    assert metadata["coach_moment"] == {**previous, "practise": True}
+    assert metadata["coach_moment"] == {**previous, "practise": True, "intervention": intervention}
+    assert reply["answer"] in {"Oto ten fragment.", "Here’s that moment."}
     assert "review_focus" not in metadata
     assert "chat_artifact" not in metadata
     assert database.takes.saved == []
+
+
+def test_a_rephrase_returns_the_words_and_exact_original_moment_together():
+    database = FakeDB()
+    database.project_rows.append({
+        "role": "bot", "kind": "text", "body": "Here is the original.",
+        "client_created_at": "2026-11-24T11:00:00Z",
+        "metadata": {"arc_id": ARC, "project_chat": True,
+                     "coach_moment": {"arc_id": ARC, "take_session_id": TAKE, "snippet_id": "s2"}},
+    })
+
+    def generate(**kwargs):
+        passage = json.loads(kwargs["user"])["passage_to_practise"]
+        assert "speaking to the board" in passage["evidence"]
+        result = _config_result("Try this opening.")
+        result.parsed = {
+            "answer": "Try this opening.",
+            "wording": {"words": "I’m asking the board to approve our plan.", "source": "practice_passage"},
+        }
+        return result
+
+    with patch("services.llm.chat_complete", generate):
+        reply, _ = project_chat.answer(database, USER, ARC, "Can you rephrase that?")
+    assert reply["row_metadata"]["coach_wording"]["take_session_id"] == TAKE
+    assert reply["row_metadata"]["coach_moment"] == {
+        "arc_id": ARC, "take_session_id": TAKE, "snippet_id": "s2", "practise": False,
+    }
+
+
+def test_asking_to_see_ideal_text_serves_its_destination_if_the_model_misses_it():
+    database = FakeDB()
+    with patch("services.llm.chat_complete", return_value=_config_result("What would you like to work through first?")):
+        reply, _ = project_chat.answer(database, USER, ARC, "Show me my full Ideal Text.")
+    assert reply["answer"] == "Here’s your Ideal Text."
+    assert reply["row_metadata"]["review_destination"] == {"step": "ideal"}
+    assert reply["row_metadata"]["take_session_id"] == TAKE
 
 
 def test_topic_request_can_practise_a_words_only_fragment_after_ideal_text():
@@ -639,10 +671,12 @@ def test_practice_follow_up_can_refer_to_an_older_take():
     assert reply["row_metadata"]["coach_moment"] == {**last, "practise": True}
 
 
-def test_record_again_is_available_after_ideal_text():
+@pytest.mark.parametrize("generated", [True, False])
+def test_record_again_is_available_after_ideal_text(generated):
     database = FakeDB()
     focus = {"step": "ideal"}
-    with patch("services.llm.chat_complete", return_value=_config_result("Yes. Give the opening another try.")):
+    model = _config_result("Yes. Give the opening another try.") if generated else None
+    with patch("services.llm.chat_complete", return_value=model):
         reply, _ = project_chat.answer(
             database, USER, ARC, "Can I record again?", take_session_id=TAKE,
             review_focus=focus, live_take_feedback=True,

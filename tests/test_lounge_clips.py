@@ -15,11 +15,13 @@ OUTCOME
       coach" bubble is left out, and each bubble says whether it is new.
   O5  My practice tries from several practices on one page all get fresh
       links, and the practices are read side by side, not one after another.
+  O6  A request for AI audio can reuse only the practice of the exact authorised moment.
 PROVES   O1 -> test_own_clip_is_resigned_and_another_users_is_not
          O2 -> test_one_page_gets_fresh_links_decks_and_flags_from_batched_reads
          O3 -> test_an_older_page_carries_no_flags_and_a_failed_step_costs_only_itself
          O4 -> test_a_coach_video_plays_only_while_it_is_the_word_s_current_one
          O5 -> test_practice_tries_from_several_practices_are_read_side_by_side
+         O6 -> test_requested_audio_looks_up_a_practice_for_only_the_authorized_moment
 """
 from unittest.mock import Mock
 
@@ -75,6 +77,25 @@ def test_chat_moment_is_signed_only_for_the_authorized_exact_take(monkeypatch):
     monkeypatch.setattr(ProjectDeletionService, "archived_projects", lambda *_: {"project"})
     assert read_chat_moment(database, "me", "t1", "s1") is None
     sign.assert_called_once()
+
+
+def test_requested_audio_looks_up_a_practice_for_only_the_authorized_moment(monkeypatch):
+    database = Mock(client=None)
+    database.takes.v2_get_session.return_value = {"id": "t1", "user_id": "me", "arc_id": "project"}
+    database.get_snippet_by_id.return_value = {"session_id": "t1", "start_offset_ms": 0, "duration_ms": 3000}
+    database.get_confident_voice_practice_by_moment.return_value = {"id": "practice", "kind": "plain"}
+    monkeypatch.setattr("services.speaker_lookup._takes_in_force", lambda *_: {"t1"})
+    monkeypatch.setattr("services.snippet_audio_url.resolve_snippet_audio_url", lambda *_: "https://media.example/mine.mp3")
+    allowed = Mock(return_value=True)
+    monkeypatch.setattr("services.take_door.practice_allowed", allowed)
+
+    assert read_chat_moment(database, "other", "t1", "s1", include_practice=True) is None
+    database.get_confident_voice_practice_by_moment.assert_not_called()
+    own = read_chat_moment(database, "me", "t1", "s1", include_practice=True)
+    assert own["practice_id"] == "practice"
+    database.get_confident_voice_practice_by_moment.assert_called_once_with("t1", "s1", "me")
+    allowed.return_value = False
+    assert "practice_id" not in read_chat_moment(database, "me", "t1", "s1", include_practice=True)
 
 
 class _Takes:

@@ -2011,6 +2011,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O3** An older page carries no flags, and a failing step (such as decks) costs only that step; my clips still refresh.
 - **O4** A coach's video plays only while it is their word's current one; a video they replaced or removed never plays, an older "Later · from your coach" bubble is left out, and each bubble says whether it is new.
 - **O5** My practice tries from several practices on one page all get fresh links, and the practices are read side by side, not one after another.
+- **O6** A request for AI audio can reuse only the practice of the exact authorised moment.
 
 ### As a person with the chat builder, I want Will's chat to hold only my model, my chat's setup and what needs me, the speaking chat to hold everything about my Takes, and "Principles" the principles coaching, without anything being stored differently (N635, widened to three places).
 

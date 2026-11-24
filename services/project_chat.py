@@ -34,6 +34,7 @@ from services.content_language import (
 from services.llm_config import SPEC_PROJECT_CHAT, SPEC_PROJECT_CHAT_TAKE
 from services.lounge_messages import speaking_coach_feature
 from services.prompts.coaching_evidence import DELIVERY_RULES, PRACTICE_HANDOFF_RULES, REFLECTION_RULES, WORDS_ONLY_RULES
+from services.lounge_clips import chat_moment_reference, requested_chat_intervention
 from services.speaking_coach import wants_practice
 from services.speaking_coach_passages import (
     Evidence,
@@ -174,7 +175,8 @@ _WEAK_MOMENT_REQUEST = re.compile(
 _SAME_MOMENT = re.compile(
     r"\b(?:here|(?:this|that) (?:moment|part|passage|fragment|line|bit)|"
     r"tu|tutaj|(?:w|na) tym fragmencie|ten fragment)\b|"
-    r"\b(?:try|practi[cs]e|repeat) (?:this|that|it)[?!. ]*$",
+    r"\b(?:try|practi[cs]e|repeat|rephrase|rewrite) (?:this|that|it)[?!. ]*$|"
+    r"\b(?:przeformuł\w*|przeredag\w*) to[?!. ]*$",
     re.IGNORECASE,
 )
 _FRAGMENT_TO_SHOW = re.compile(
@@ -210,10 +212,14 @@ _FELT_UNSURE = re.compile(
     r"\b.{0,24}\b(?:insecure|unsure|uncertain|niepewn\w*)\b",
     re.IGNORECASE,
 )
-_PRACTICE_TOOL = re.compile(
-    r"\b(?:sniper|perimeter|ai (?:audio|voice|example)|coach(?:'s)? (?:video|clip)|"
-    r"(?:wideo|film) (?:od |z )?trener\w*|(?:przykład|głos|nagranie) ai)\b",
-    re.IGNORECASE,
+_REPHRASE_REQUEST = re.compile(r"\b(?:rephrase|rewrite|przeformuł\w*|przeredag\w*)\b", re.IGNORECASE)
+_SHOW_IDEAL = re.compile(
+    r"\b(?:show|see|read|open|give|send|pokaż\w*|zobacz\w*|przeczyt\w*|otwórz\w*|daj|wyślij)\b"
+    r".{0,60}\b(?:ideal text|idealn\w* tekst\w*)\b", re.IGNORECASE,
+)
+_NAMED_PASSAGE = re.compile(
+    r"\b(?:opening|introduction|closing|conclusion|slide (?:\w+)|take \d+|"
+    r"wstęp\w*|otwarci\w*|zakończ\w*|slajd\w*|nagranie \d+)\b", re.IGNORECASE,
 )
 _REMEMBER_PRACTICE = re.compile(r"\b(?:remember\w*|zapamięt\w*|utrwal\w*)\b", re.IGNORECASE)
 _RECORD_AGAIN = re.compile(
@@ -918,7 +924,7 @@ def _passage_source(passages: dict[str, Evidence], reference: Any) -> Optional[S
 def _asks_to_practise_here(question: str) -> bool:
     return bool(
         _SAME_MOMENT.search(question) and not _PASSAGE_BY_DESCRIPTION.search(question)
-        and (wants_practice(question) or _PRACTICE_TOOL.search(question))
+        and (wants_practice(question) or _REPHRASE_REQUEST.search(question))
     )
 
 
@@ -926,9 +932,10 @@ def _asks_about_an_unsure_moment(question: str) -> bool:
     return bool(_PASSAGE_BY_DESCRIPTION.search(question) and _FELT_UNSURE.search(question))
 
 
-def _practice_referent(context: ProjectChatContext, question: str, review: Optional[dict]) -> Optional[tuple[Source, str]]:
+def _practice_referent(context: ProjectChatContext, question: str, review: Optional[dict],
+                       *, named_followup: bool = False) -> Optional[tuple[Source, str]]:
     """Ground 'here' in the reviewed moment or a saved reply in this project."""
-    if not _asks_to_practise_here(question):
+    if not (named_followup or _asks_to_practise_here(question)):
         return None
     anchor = _dict(_dict(review).get("anchor"))
     if anchor.get("step") != "ideal" and (snippet := anchor.get("snippet_id")):
@@ -999,6 +1006,31 @@ def _fragment_referent(context: ProjectChatContext, question: str, review: Optio
     return None
 
 
+def _answer_named_intervention(context: ProjectChatContext, state: ProjectChatState, question: str,
+                               language: str, review: Optional[dict]) -> tuple[dict, str] | None:
+    intervention = requested_chat_intervention(question)
+    if not intervention:
+        return None
+    source: Optional[Source]
+    if (_PASSAGE_BY_DESCRIPTION.search(question) or _QUOTED_FRAGMENT.search(question)
+            or _NAMED_PASSAGE.search(question)):
+        passage = _literal_fragment(question, list(context.recorded_passages), context.take_session_id)
+        if not passage:
+            return None  # Let passage retrieval resolve descriptions without using the preceding clip.
+        source = passage.sources[0]
+    else:
+        passage = _fragment_referent(context, question, review)
+        referred = None if passage else _practice_referent(context, question, review, named_followup=True)
+        source = passage.sources[0] if passage else referred[0] if referred else None
+    if not source or not source.snippet_id:
+        prompt = ("Który fragment masz na myśli? Podaj kilka słów z nagrania."
+                  if language == "pl" else "Which fragment do you mean? Give me a few words from the recording.")
+        return _reply(context, state, prompt, fast_path=True)
+    metadata = _answer_metadata(context, question, {}, {"practise": True}, review, (source, ""))
+    answer = "Oto ten fragment." if language == "pl" else "Here’s that moment."
+    return _reply(context, state, answer, fast_path=True, extra_metadata=metadata)
+
+
 def _answer_fragment_request(context: ProjectChatContext, state: ProjectChatState, question: str,
                              language: str, review: Optional[dict]) -> tuple[dict, str] | None:
     record = bool(_TEXT_AND_RECORD.search(question))
@@ -1019,8 +1051,6 @@ def _answer_fragment_request(context: ProjectChatContext, state: ProjectChatStat
         prompt = ("Który fragment masz na myśli? Podaj kilka słów z nagrania."
                   if language == "pl" else "Which fragment do you mean? Give me a few words from the recording.")
         return _reply(context, state, prompt, fast_path=True, extra_metadata=metadata)
-
-    from services.lounge_clips import chat_moment_reference
 
     source = passage.sources[0]
     metadata["coach_moment"] = chat_moment_reference(
@@ -1465,7 +1495,7 @@ def _model_turn(
         has_delivery = bool(review.get("delivery_observations"))
     if context.current_take.get("transcript") or passages:
         system += "\n\n" + (DELIVERY_RULES if has_delivery else WORDS_ONLY_RULES)
-    if practice_referent or _PASSAGE_BY_DESCRIPTION.search(question) or _WEAK_MOMENT_REQUEST.search(question) or wants_practice(question):
+    if practice_referent or _PASSAGE_BY_DESCRIPTION.search(question) or _WEAK_MOMENT_REQUEST.search(question) or wants_practice(question) or requested_chat_intervention(question):
         system += "\n\n" + PRACTICE_HANDOFF_RULES
     if review and (instruction := _review_instruction(context, state, question, review)):
         system += f"\n\nFor this turn: {instruction}"
@@ -1600,6 +1630,17 @@ def _conversation_default(answer: str, state: ProjectChatState) -> bool:
     }
 
 
+def _requested_output(context: ProjectChatContext, question: str, language: str,
+                      review: Optional[dict], parsed: Optional[dict]) -> tuple[str, Optional[dict]]:
+    answer = _model_answer(parsed)
+    if context.ideal_text and _SHOW_IDEAL.search(question) and (not answer or _dict(parsed).get("next_review_step") != "ideal"):
+        return ("Oto Twój Ideal Text." if language == "pl" else "Here’s your Ideal Text."), {"next_review_step": "ideal"}
+    meta = _dict(review)
+    if not answer and meta.get("live") and _dict(meta.get("anchor")).get("step") == "ideal" and _RECORD_AGAIN.search(question):
+        return ("Możesz nagrać kolejną próbę." if language == "pl" else "You can record another take."), {"offer_next_take": True}
+    return answer, parsed
+
+
 def _answer_general(
     database: Any,
     user_id: str,
@@ -1649,7 +1690,7 @@ def _answer_general(
         review=review,
         practice_referent=practice_referent,
     )
-    model_answer = _model_answer(parsed)
+    model_answer, parsed = _requested_output(context, question, target_language, review, parsed)
     if not review and _conversation_default(model_answer, state):
         model_answer = ""
     if review and not model_answer:
@@ -1695,8 +1736,6 @@ def _reply_moment(context: ProjectChatContext, passages: dict[str, Evidence], pa
 def _answer_metadata(context: ProjectChatContext, question: str, passages: dict[str, Evidence],
                      parsed: Optional[dict], review: Optional[dict],
                      practice_referent: Optional[tuple[Source, str]] = None) -> dict:
-    from services.lounge_clips import chat_moment_reference
-
     anchor = review["anchor"] if review else None
     metadata = {"review_focus": anchor} if anchor else {}
     if not parsed:
@@ -1716,12 +1755,16 @@ def _answer_metadata(context: ProjectChatContext, question: str, passages: dict[
     if next_step == "ideal" and (anchor or context.ideal_text):
         metadata["review_destination"] = {"step": "ideal"}
     if snippet:
+        intervention = requested_chat_intervention(question)
         metadata["coach_moment"] = chat_moment_reference(
             context.arc_id, moment_take, snippet,
+            intervention=intervention,
             practise=(
-                parsed.get("practise") is True or wants_practice(question) or
-                bool(_WEAK_MOMENT_REQUEST.search(question) or practice_referent or
-                     (anchor and anchor.get("step") == "practise"))
+                not (wording and _REPHRASE_REQUEST.search(question)) and (
+                    bool(intervention) or parsed.get("practise") is True or wants_practice(question) or
+                    bool(_WEAK_MOMENT_REQUEST.search(question) or practice_referent or
+                         (anchor and anchor.get("step") == "practise"))
+                )
             ),
         )
     if _dict(review).get("live"):
@@ -1840,6 +1883,8 @@ def answer(
     if review:
         state = replace(state, phase=ConversationPhase.CONVERSATION, next_slot="", open_question=None)
     target_language = _target_language(context, question)
+    if intervention := _answer_named_intervention(context, state, question, target_language, review):
+        return intervention
     if fragment := _answer_fragment_request(context, state, question, target_language, review):
         return fragment
     if open_q and _meaningful_slot_answer(question):
