@@ -139,6 +139,10 @@ _FORBIDDEN_OUTPUT = re.compile(
     r"\b\d+(?:\.\d+)?\s*(?:%|wpm|hz|ms)\b",
     re.IGNORECASE,
 )
+_READINESS_SCORE = re.compile(
+    r"\b(?:\d+\s*/\s*\d+|out of (?:ten|a hundred|\d+)|na (?:dziesięć|sto|\d+))\b",
+    re.IGNORECASE,
+)
 _AUDIENCE_EVIDENCE = re.compile(
     r"\b(?:my audience is|i(?:'m| am) (?:speaking|talking) (?:mainly |primarily )?to|"
     r"this is for)\s+([^.!?;\n]{2,90})"
@@ -933,6 +937,31 @@ use an empty array when they would feel canned. Do not put a second question
 inside a chip or answer.
 """
 
+_LIVE_FEEDBACK = """
+This is the live conversation after the speaker's Take. Start from the
+strength they heard when one was available. Answer what they ask before guiding the
+feedback anywhere. Ask one question at a time and wait for a typed or spoken
+reply. If they ask for more strengths, pick the next distinct published
+strength in order. Use the list of moments already shown. If they ask for
+an improvement, or say they are open to one, pick one published moment.
+When offering an improvement with a moment, set practise to true and provide
+a short, concrete instruction in "intervention" for what they can say or
+record in this chat. Use that moment's wording or delivery. Do not present an
+improvement clip alone. If uncertain whether they want criticism, ask if they
+would like a moment to work on. Never infer their emotional readiness.
+
+When they want the Ideal Text or are done with the practice, offer the
+existing document and set next_review_step to "ideal". Explain briefly how
+the helper words can carry what worked into the next attempt. Set moment to
+null. In that turn only, add "after_ideal_text" with a short grounded view of
+what is ready and what still needs rehearsal, and one question about whether
+they want another attempt. It appears below the document. Use words based on
+the Take and recent practice. Avoid scores. Set "offer_next_take" to true
+when a next rehearsal fits, including if they explicitly ask to record
+one. If they still want to work through moments, keep coaching before showing
+the document. No canned praise, readiness labels, or generic summaries.
+"""
+
 
 def _parse_model(result: Any) -> Optional[dict]:
     parsed = getattr(result, "parsed", None) if result is not None else None
@@ -1116,7 +1145,7 @@ def _reply(
         "answer": text,
         "bubbles": _split_bubbles(text),
         "show_record_ui": False,
-        "suggested_action": None,
+        "suggested_action": metadata.get("suggested_action") if metadata.get("live_take_feedback") else None,
         "chips": clean_chips,
         "project_state": {
             "phase": state.phase.value,
@@ -1206,6 +1235,8 @@ def _model_turn(
         system += "\n\n" + (DELIVERY_RULES if has_delivery else WORDS_ONLY_RULES)
     if review and (instruction := _review_instruction(context, state, question, review)):
         system += f"\n\nFor this turn: {instruction}"
+    if review and review.get("live"):
+        system += "\n\n" + _LIVE_FEEDBACK
     started = time.perf_counter()
     try:
         from services import llm
@@ -1367,7 +1398,7 @@ def _answer_general(
         context,
         state,
         answer,
-        chips=_chips(parsed.get("chips")) if parsed and model_answer else [],
+        chips=_chips(parsed.get("chips")) if parsed and model_answer and not (review or {}).get("live") else [],
         model=getattr(result, "model", None),
         model_ms=getattr(result, "duration_ms", model_ms),
         captured_slots=captured_slots,
@@ -1416,6 +1447,36 @@ def _answer_metadata(context: ProjectChatContext, question: str,
                 bool(anchor and anchor.get("step") == "practise")
             ),
         )
+    if _dict(review).get("live"):
+        metadata.update(_live_feedback_metadata(context, question, parsed, snippet, metadata))
+    return metadata
+
+
+def _live_feedback_metadata(context: ProjectChatContext, question: str, parsed: dict,
+                            snippet: Optional[str], reply: dict) -> dict:
+    metadata: dict = {"live_take_feedback": True}
+    if snippet and isinstance(reply.get("coach_moment"), dict):
+        intervention = _text(parsed.get("intervention"), 360)
+        weak = any(item.get("snippet_id") == snippet and item.get("kind") not in _STRENGTH_KINDS
+                   for item in context.feedback_moments)
+        if weak and (not intervention or _FORBIDDEN_OUTPUT.search(intervention)):
+            intervention = (
+                "Spróbuj teraz nagrać ten fragment jeszcze raz, uwzględniając tę zmianę."
+                if _target_language(context, question) == "pl"
+                else "Try recording this passage again with that change."
+            )
+        if intervention and not _FORBIDDEN_OUTPUT.search(intervention):
+            metadata["chat_artifact"] = {
+                "version": 1, "title": intervention, "intervention": intervention,
+            }
+            reply["coach_moment"]["practise"] = True
+    if context.ideal_text and parsed.get("next_review_step") == "ideal":
+        after = _text(parsed.get("after_ideal_text"), 420)
+        if after and after.count("?") <= 1 and not (_FORBIDDEN_OUTPUT.search(after) or _READINESS_SCORE.search(after)):
+            metadata["after_ideal_text"] = after
+    output_seen = _dict(reply.get("review_focus")).get("step") == "ideal"
+    if parsed.get("offer_next_take") is True and (output_seen or metadata.get("after_ideal_text")):
+        metadata["suggested_action"] = "record_again"
     return metadata
 
 
@@ -1473,6 +1534,7 @@ def answer(
     *,
     take_session_id: Optional[str] = None,
     review_focus: Any = None,
+    live_take_feedback: bool = False,
 ) -> tuple[dict, str]:
     """Answer a Project Chat turn without entering the global chat router."""
     question = " ".join((question or "").split()).strip()
@@ -1490,6 +1552,21 @@ def answer(
 
     anchor = review_anchor(review_focus)
     review = _review_focus(database, context, anchor) if anchor else None
+    if review and live_take_feedback:
+        seen = set()
+        for row in context.project_rows:
+            meta = _dict(row.get("metadata"))
+            if meta.get("take_session_id") == context.take_session_id:
+                snippet = meta.get("snippet_id") or _dict(meta.get("coach_moment")).get("snippet_id")
+                if isinstance(snippet, str):
+                    seen.add(snippet)
+        review.update({
+            "live": True,
+            "moments_already_shown": [
+                f"M{index}" for index, item in enumerate(context.feedback_moments)
+                if item.get("snippet_id") and item["snippet_id"] in seen
+            ],
+        })
     open_q = None if review else will_question.open_question(database, user, arc_id=arc)
     state = derive_state(context, context.project_rows, open_q)
     if review:

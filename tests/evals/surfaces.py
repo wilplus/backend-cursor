@@ -193,6 +193,7 @@ def _project_chat(inp: dict) -> dict:
     reply, _ = project_chat.answer(
         database, user_id, arc_id, inp["question"], take_session_id=take_id,
         review_focus=inp.get("focus", {"step": "feedback", "snippet_id": "opening"}),
+        live_take_feedback=inp.get("live_take_feedback") is True,
     )
     metadata = reply["row_metadata"]
     output = {
@@ -202,6 +203,10 @@ def _project_chat(inp: dict) -> dict:
     }
     if inp.get("include_wording"):
         output["wording"] = metadata.get("coach_wording")
+    if inp.get("live_take_feedback"):
+        output["intervention"] = (metadata.get("chat_artifact") or {}).get("intervention")
+        output["readiness"] = metadata.get("after_ideal_text")
+        output["record_next"] = reply.get("suggested_action") == "record_again"
     return output
 
 
