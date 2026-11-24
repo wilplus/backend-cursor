@@ -15,11 +15,14 @@ OUTCOME
       scoped follow-ups without exposing the global Lounge.
   O5  A regular project reply can use the word and vocal evidence for its
       exact passage and show it without bringing weekly principles into the project.
+  O6  Live feedback pairs an improvement with an intervention and can offer
+      the Ideal Text, a readiness note in words, and another Take.
 PROVES   O1 -> test_context_is_bounded_to_current_project_and_carries_feedback_deck_ideal_text
          O2 -> test_state_skips_known_audience_and_goal_and_asks_one_slot_at_a_time
          O3 -> test_tone_and_content_language_are_passed_to_the_single_generation
          O4 -> test_unknown_arc_fails_closed
          O5 -> test_ordinary_project_reply_uses_its_own_vocal_evidence_and_attaches_the_passage
+         O6 -> test_live_feedback_pairs_an_improvement_with_an_intervention_and_offers_the_ideal_text
 WHY      Project Chat redesign, 2026-11-18; preserve the current-project
          processing boundary and the Feedback walk's record -> process -> Take loop.
 
