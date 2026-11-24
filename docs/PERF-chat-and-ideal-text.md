@@ -18,10 +18,15 @@ answers subsequent project questions without closing the composer. Its
 state skips known audience/goal fields and varies language and tone from
 the actual conversation. A recorded project uses the Take coaching model
 and the same delivery evidence and reflection rules as Speaking Coach.
-The project ranks a bounded set of passages from the existing snippet read
-without an embedding call, and reads Ideal Text through the owner-checked
-document core. A short acknowledgement after setup has a deterministic fast
-path (N683).
+The project ranks passages from the existing batched snippet read and reads
+Ideal Text through the owner-checked document core. A short acknowledgement
+after setup has a deterministic fast path (N683). When the speaker describes
+a fragment by subject, Project Chat includes passages with words alone and
+can use one authorised semantic read if the candidate set exceeds the prompt
+budget. The selected evidence reference serves the reply's exact recording
+and requests its currently available practice. A follow-up can resolve the
+last cited authorised Take from the existing project history in the same
+snippet batch, including when it is older than the recent Takes.
 
 In Speaking Coach (`place=speaking`), ordinary conversation uses deterministic
 routing and one `SPEC_SPEAKING_COACH` generation. Questions scoped to a Take

@@ -63,6 +63,43 @@ WORDS_ONLY_RULES = (
     "Attribute any observation from shared coach feedback to the coach."
 )
 
+PRACTICE_HANDOFF_RULES = """
+A request for criticism, a weaker moment, or something to improve means the
+speaker is ready for one concrete thing to try. This includes short follow-ups
+like "and some critics?" after discussing how they sounded. Choose one relevant
+published improvement or a passage with delivery evidence for the issue. Tie a
+short observation and a specific practice cue to its actual words. For pace,
+name where the speaker can give the words more room or carry them through more
+smoothly. Use the exact moment reference and set practise to true. End on the
+cue without a generic coaching question.
+
+If passage_to_practise is provided, the speaker wants to try something on this
+same passage. Use a short quote from it and give one specific thing to try at
+one place in the line. Set moment to "practice_passage" and practise to true.
+The app offers the practice already picked for that moment when available.
+For requests mentioning Sniper, AI audio, or a coach video, stay on the
+requested passage and avoid claiming that a particular tool is available.
+
+When the speaker describes a fragment by subject or by what they said, find
+the matching recorded_passages evidence and use that exact reference in
+moment, even if a different moment or the Ideal Text is open. Use the actual
+words from the matching passage. Only describe delivery when that passage
+has delivery observations. Set practise to true if they ask to try it or
+want a way to rehearse it. If several passages fit equally well or none does,
+ask one short question to identify it and leave moment null.
+
+If they say a passage felt insecure, acknowledge that they felt it. Offer one
+concrete way to rehearse the exact words or make that point easier to deliver.
+When the cause is unclear, end the answer with exactly one question about what
+felt hard, such as trusting the example, finding the words, or addressing the
+listeners. Explore pressure or preparation as possibilities in that question.
+If they say they needed more knowledge, offer one useful fact to check or one
+example to prepare. Ground each possibility in this passage and what they
+said. When the selected passage only has spoken words, don't comment on its
+pace, pauses, emphasis, or tone, even if other passages have those cues.
+Never label their mental state or competence from delivery.
+"""
+
 
 REGISTER = {
     "speaking_coach.reflection": REFLECTION_RULES,
@@ -71,4 +108,5 @@ REGISTER = {
     "project_chat.reflection": REFLECTION_RULES,
     "project_chat.delivery_evidence": DELIVERY_RULES,
     "project_chat.words_only": WORDS_ONLY_RULES,
+    "project_chat.practice_handoff": PRACTICE_HANDOFF_RULES,
 }

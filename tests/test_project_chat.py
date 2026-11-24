@@ -17,12 +17,21 @@ OUTCOME
       exact passage and show it without bringing weekly principles into the project.
   O6  Live feedback pairs an improvement with an intervention and can offer
       the Ideal Text, a readiness note in words, and another Take.
+  O7  A topic request retrieves the exact passage even when the coach only has
+      its words, and its practice points to the same recording.
+  O8  Follow-up practice can use a previously cited authorised Take after
+      reload, without moving the active exchange.
+  O9  A direct request to record again after Ideal Text offers the existing
+      next-Take action.
 PROVES   O1 -> test_context_is_bounded_to_current_project_and_carries_feedback_deck_ideal_text
          O2 -> test_state_skips_known_audience_and_goal_and_asks_one_slot_at_a_time
          O3 -> test_tone_and_content_language_are_passed_to_the_single_generation
          O4 -> test_unknown_arc_fails_closed
          O5 -> test_ordinary_project_reply_uses_its_own_vocal_evidence_and_attaches_the_passage
          O6 -> test_live_feedback_pairs_an_improvement_with_an_intervention_and_offers_the_ideal_text
+         O7 -> test_topic_request_can_practise_a_words_only_fragment_after_ideal_text
+         O8 -> test_practice_follow_up_can_refer_to_an_older_take
+         O9 -> test_record_again_is_available_after_ideal_text
 WHY      Project Chat redesign, 2026-11-18; preserve the current-project
          processing boundary and the Feedback walk's record -> process -> Take loop.
 
@@ -188,7 +197,7 @@ def test_context_is_bounded_to_current_project_and_carries_feedback_deck_ideal_t
     assert context.take_session_id == TAKE
     assert context.current_take["transcript"].startswith("I am speaking to the board")
     assert context.feedback_moments[0]["moment"] == "I am speaking to the board."
-    assert "pause before the ask" in context.delivery_passages[0].text
+    assert "pause before the ask" in context.recorded_passages[0].text
     assert context.ideal_text.startswith("A clear decision")
     assert context.deck[0]["title"] == "Decision"
     assert "FOREIGN PROJECT SECRET" not in json.dumps(context, default=str)
@@ -506,7 +515,12 @@ def test_coaching_advice_contains_the_actual_line_and_uses_the_project_scope():
     }
 
 
-def test_ordinary_project_reply_uses_its_own_vocal_evidence_and_attaches_the_passage():
+@pytest.mark.parametrize(("question", "answer"), [
+    ("How can I practise the ending?", "Give the request a short pause before today."),
+    ("and some critics?", "Give the request a short pause before today."),
+    ("Pokaż najsłabszy fragment", "Zrób krótką pauzę przed słowem »today«."),
+])
+def test_ordinary_project_reply_uses_its_own_vocal_evidence_and_attaches_the_passage(question, answer):
     from services.llm_config import SPEC_PROJECT_CHAT_TAKE
 
     database = FakeDB(audience="the board", goal="approve the plan")
@@ -524,12 +538,114 @@ def test_ordinary_project_reply_uses_its_own_vocal_evidence_and_attaches_the_pas
         assert "pace: a bit fast" in passage["evidence"] and "188" not in passage["evidence"]
         assert "PRIVATE WEEKLY PRINCIPLE" not in kwargs["user"]
         assert "FOREIGN PROJECT SECRET" not in kwargs["user"]
-        result = _config_result("The direct request is clear. Give it a short pause before today.")
-        result.parsed = {**json.loads(result.text), "moment": passage["reference"], "practise": True}
+        result = _config_result(answer)
+        result.parsed = {**json.loads(result.text), "moment": passage["reference"], "practise": False}
         return result
 
     with patch("services.llm.chat_complete", generate):
-        response, _ = project_chat.answer(database, USER, ARC, "How can I practise the ending?")
+        response, _ = project_chat.answer(database, USER, ARC, question)
     assert response["row_metadata"]["coach_moment"] == {
         "arc_id": ARC, "take_session_id": TAKE, "snippet_id": "closing", "practise": True,
     }
+
+
+@pytest.mark.parametrize(("question", "answer"), [
+    ("actually I would like to try sniper here?", "Give the decision a little more room."),
+    ("Can I try the AI audio for this passage?", "Give the decision a little more room."),
+    ("Pokaż tutaj wideo od trenera", "Zrób trochę więcej miejsca na decyzję."),
+])
+def test_a_practice_follow_up_keeps_the_saved_moment_in_its_take(question, answer):
+    database = FakeDB()
+    previous = {"arc_id": ARC, "take_session_id": TAKE, "snippet_id": "s2", "practise": False}
+    for take, snippet, day in ((TAKE, "s2", 18), ("take-a1", "s2", 19)):
+        database.project_rows.append({
+            "role": "bot", "kind": "text", "body": "Here is the fragment we just discussed.",
+            "client_created_at": f"2026-11-{day}T09:00:00Z",
+            "metadata": {
+                "arc_id": ARC, "project_chat": True, "next_slot": "audience",
+                "coach_moment": {**previous, "take_session_id": take, "snippet_id": snippet},
+            },
+        })
+
+    def generate(**kwargs):
+        passage = json.loads(kwargs["user"])["passage_to_practise"]
+        assert "speaking to the board" in passage["evidence"]
+        result = _config_result(answer)
+        result.parsed = {"answer": answer, "moment": None, "practise": False}
+        return result
+
+    with patch("services.llm.chat_complete", generate):
+        reply, _ = project_chat.answer(database, USER, ARC, question)
+    metadata = reply["row_metadata"]
+    assert metadata["coach_moment"] == {**previous, "practise": True}
+    assert "review_focus" not in metadata
+    assert "chat_artifact" not in metadata
+    assert database.takes.saved == []
+
+
+def test_topic_request_can_practise_a_words_only_fragment_after_ideal_text():
+    database = FakeDB()
+    words = "We changed cars before the second brake test."
+    database.snippets[TAKE].extend([
+        {"id": f"other-{index}", "start_offset_ms": index * 1000, "transcript": "The report comes out next week."}
+        for index in range(1, 8)
+    ])
+    database.snippets[TAKE].append({"id": "cars", "start_offset_ms": 8000, "transcript": words})
+    focus = {"step": "ideal"}
+
+    def generate(**kwargs):
+        prompt = json.loads(kwargs["user"])
+        target = next(item for item in prompt["project_context"]["recorded_passages"] if words in item["evidence"])
+        assert target["evidence_kind"] == "speaker_words"
+        assert "passage_to_practise" not in prompt
+        result = _config_result("You said the cars felt tricky. Try saying the change as one short line first. "
+                                "What felt uncertain? Was it the example?")
+        result.parsed = {**json.loads(result.text), "moment": target["reference"], "practise": True}
+        return result
+
+    with patch("services.llm.embed", return_value=None) as embed, patch("services.llm.chat_complete", generate):
+        reply, _ = project_chat.answer(
+            database, USER, ARC, "The part when I was talking about the cars, I felt insecure. Can we practise it?",
+            take_session_id=TAKE, review_focus=focus, live_take_feedback=True,
+        )
+    embed.assert_not_called()
+    assert reply["row_metadata"]["coach_moment"] == {
+        "arc_id": ARC, "take_session_id": TAKE, "snippet_id": "cars", "practise": True,
+    }
+    assert reply["row_metadata"]["review_focus"] == focus
+    assert reply["answer"].endswith("What felt uncertain?")
+
+
+def test_practice_follow_up_can_refer_to_an_older_take():
+    database = FakeDB()
+    database.takes.sessions[ARC] += [_session(f"take-a{index}", index=index) for index in range(3, 6)]
+    last = {"arc_id": ARC, "take_session_id": "take-a1", "snippet_id": "s1", "practise": False}
+    database.project_rows.append({
+        "role": "bot", "kind": "text", "body": "That was the older opening.",
+        "metadata": {"arc_id": ARC, "project_chat": True, "coach_moment": last},
+    })
+
+    def generate(**kwargs):
+        passage = json.loads(kwargs["user"])["passage_to_practise"]
+        assert "The old opening." in passage["evidence"]
+        return _config_result("Give the opening a beat before continuing.")
+
+    with patch("services.llm.chat_complete", generate):
+        reply, _ = project_chat.answer(
+            database, USER, ARC, "Can we practise it?", take_session_id="take-a5",
+            review_focus={"step": "feedback"}, live_take_feedback=True,
+        )
+    assert reply["row_metadata"]["take_session_id"] == "take-a5"
+    assert reply["row_metadata"]["coach_moment"] == {**last, "practise": True}
+
+
+def test_record_again_is_available_after_ideal_text():
+    database = FakeDB()
+    focus = {"step": "ideal"}
+    with patch("services.llm.chat_complete", return_value=_config_result("Yes. Give the opening another try.")):
+        reply, _ = project_chat.answer(
+            database, USER, ARC, "Can I record again?", take_session_id=TAKE,
+            review_focus=focus, live_take_feedback=True,
+        )
+    assert reply["suggested_action"] == "record_again"
+    assert reply["row_metadata"]["review_focus"] == focus

@@ -163,8 +163,8 @@ def delivery_description(row: dict) -> str:
     return f"Delivery across the whole passage: {'; '.join(delivery)}" if delivery else ""
 
 
-def delivery_evidence(label: str, take: dict, rows: list[dict]) -> list[Evidence]:
-    """Keep each spoken moment together with its own saved delivery."""
+def delivery_evidence(label: str, take: dict, rows: list[dict], *, include_words_only: bool = False) -> list[Evidence]:
+    """Keep each spoken moment together with its own saved delivery, when available."""
     passages = {index: f" {normalize(text)} " for index, text in _transcripts(take).items()}
     has_deck = bool(_deck(take))
     rows = [row for row in rows if isinstance(row, dict)
@@ -172,13 +172,16 @@ def delivery_evidence(label: str, take: dict, rows: list[dict]) -> list[Evidence
     out = []
     for position, row in enumerate(rows):
         spoken = " ".join(str(row.get("transcript") or row.get("transcription_text") or "").split())
-        if not spoken or not (description := delivery_description(row)):
+        if not spoken:
+            continue
+        description = delivery_description(row)
+        if not description and not include_words_only:
             continue
         # A moment that spans slides or matches several has only Take-level provenance.
         needle = f" {normalize(spoken)} "
         matches = [index for index, passage in passages.items() if needle in passage]
-        metrics = row["metrics"]
-        piece = metrics.get("piece")
+        metrics = row.get("metrics")
+        piece = metrics.get("piece") if isinstance(metrics, dict) else None
         recorded_slide = piece.get("slide_index") if isinstance(piece, dict) else None
         index = recorded_slide if type(recorded_slide) is int and recorded_slide >= 0 else (
             matches[0] if len(matches) == 1 else None
@@ -188,8 +191,9 @@ def delivery_evidence(label: str, take: dict, rows: list[dict]) -> list[Evidence
         quote = textwrap.shorten(spoken, width=MAX_EVIDENCE_CHARS - len(description) - 24,
                                  placeholder="…")
         out.append(Evidence(
-            "delivery_cues", label, "recent", "observed_cues",
-            f"Spoken passage: «{quote}». {description}",
+            "delivery_cues" if description else "take_transcript", label, "recent",
+            "observed_cues" if description else "speaker_words",
+            f"Spoken passage: «{quote}». {description}".strip(),
             (_transcript_source(take, index, str(row["id"]) if row.get("id") else None),),
             section, index if has_deck or type(recorded_slide) is int else None,
         ))

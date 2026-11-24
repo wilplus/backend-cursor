@@ -162,6 +162,7 @@ def _walk_voice(inp: dict) -> Any:
 def _project_chat(inp: dict) -> dict:
     """Answer in a synthetic project using the same scoped context and attachments."""
     from services import project_chat
+    from services.lounge_clips import chat_moment_reference
 
     user_id, arc_id, take_id = "project-chat-eval", "eval-project", "eval-take"
     take = {
@@ -175,17 +176,24 @@ def _project_chat(inp: dict) -> dict:
         "id": "opening", "session_id": take_id, "transcript": inp["transcript"],
         "metrics": {"vocal_cues": inp.get("vocal_cues", []), **(inp.get("metrics") or {})},
     }]
+    snippets.extend({"session_id": take_id, **item} for item in inp.get("snippets", []))
     for item in inp.get("feedback", []):
         if item["snippet_id"] != "opening":
             snippets.append({
                 "id": item["snippet_id"], "session_id": take_id, "transcript": item["transcript_corrected"],
             })
+    rows = []
+    for turn in inp.get("history", []):
+        metadata: dict = {"arc_id": arc_id, "take_session_id": take_id, "project_chat": True}
+        if snippet := turn.get("moment"):
+            metadata["coach_moment"] = chat_moment_reference(arc_id, take_id, snippet)
+        rows.append({"role": turn["role"], "body": turn["body"], "metadata": metadata})
     database = SimpleNamespace(
         client=None,
         get_arc_sessions=lambda arc: [take] if arc == arc_id else [],
         get_snippets_by_sessions=lambda ids: {take_id: snippets} if take_id in ids else {},
         get_coach_snippet_drafts=lambda sid: inp.get("feedback", []) if sid == take_id else [],
-        get_project_lounge_messages_page=lambda *_args, **_kwargs: [],
+        get_project_lounge_messages_page=lambda *_args, **_kwargs: rows,
         get_ideal_text_document_core=lambda arc, owner: {
             "source_take_session_id": take_id, "payload": {"text": inp["ideal_text"]},
         } if arc == arc_id and owner == user_id and inp.get("ideal_text") else None,
