@@ -498,7 +498,9 @@ EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email: str,
                    guest_timezone: str, note: str = "", embedded: bool = False,
                    skip_payment: bool = False, link: str = "",
-                   pay_with_tokens: bool = False) -> dict:
+                   pay_with_tokens: bool = False,
+                   expected_offer: tuple[int, int, str] | None = None,
+                   human_coach_request_id: str | None = None) -> dict:
     """Hold the slot and open Stripe Checkout for a signed-in account, at that
     person's price (charged as an amount, not a Stripe product). Returns
     {"client_secret": ...} for the card form inside the booking page when
@@ -507,13 +509,8 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
     pays from the account's tokens instead (N198 item 4), and skips Stripe."""
     s = settings_for_link(get_settings(), link)  # the link's length, when it has one
     offer = offer_for(slug, user_id, link)  # raises NOT_FOUND when off or wrong link
-    price = int(offer["price_cents"])
-    price_link = bool(offer.get("price_link"))
-    if price_link and price and skip_payment:
-        raise BookingError("PAY_NOW", "This link is paid when you book.")
-    # Book and pay later: a confirmed booking at 0 that remembers what is due.
-    if skip_payment:
-        price = 0
+    price, price_link = _checkout_terms(
+        s, offer, expected_offer, skip_payment)
     tokens_cost = _tokens_for(pay_with_tokens, price)
     name, email, note = (name or "").strip()[:120], (email or "").strip()[:254], (note or "").strip()[:2000]
     if not name:
@@ -547,6 +544,9 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
     db.client.table("bookings").update({
         "user_id": user_id, "list_price_cents": int(offer["list_price_cents"]),
         "due_cents": int(offer["price_cents"]) if skip_payment else None,
+        **(
+            {"human_coach_request_id": human_coach_request_id} if human_coach_request_id else {}
+        ),
     }).eq("id", booking_id).execute()
     base = (config.FRONTEND_URL or "https://www.willpowerlab.com").rstrip("/")
 
@@ -1039,3 +1039,15 @@ def _forget_number(row: dict) -> None:
         db.client.table("bookings").update({"guest_whatsapp": None}).eq("id", row["id"]).execute()
     except Exception as e:  # noqa: BLE001 -- the past-booking sweep clears it later
         logger.warning("booking: could not clear the number booking=%s: %s", row["id"], type(e).__name__)
+
+
+def _checkout_terms(settings: dict, offer: dict, expected: tuple[int, int, str] | None,
+                    skip_payment: bool) -> tuple[int, bool]:
+    price = int(offer["price_cents"])
+    if expected is not None and expected != (price, int(settings["duration_min"]), settings["currency"]):
+        raise BookingError("OFFER_CHANGED", "The available call has changed. Review the calendar again.", 409)
+    price_link = bool(offer.get("price_link"))
+    if price_link and price and skip_payment:
+        raise BookingError("PAY_NOW", "This link is paid when you book.")
+    # Book and pay later: a confirmed booking at 0 that remembers what is due.
+    return (0 if skip_payment else price), price_link

@@ -1811,6 +1811,9 @@ O3  When the alarm fires, its message names the host chat of each
 unreached Take; a chat that cannot be read never stops the alarm.","O1 -> HostChatTakeTests::test_an_opened_moment_is_listed_for_a_coach
 O2 -> HostChatTakeTests::test_unreached_host_chat_takes_fire_the_alarm
 O3 -> HostChatTakeTests::test_the_alarm_names_the_host_chats",N648 item 8 (coaches answer the moments of a Take made in a host's chat); promise: every moment a speaker meets reaches a coach.
+tests/test_human_coach_handoff.py,Story,I want to ask Artur for private feedback on the exact Take.,"I can see both offers, send once, and only Artur can open the review.","test_direct_request_offers_the_exact_take_without_sending
+test_private_email_keeps_a_stable_delivery_key_on_retry
+test_private_inbox_is_confined_to_the_assigned_reviewer","N688, private access and an explicit handoff."
 tests/test_ideal_text_bake_fresh_head.py,Story,"As a speaker, I want my feedback marks built on the Take I was just told is ready, so that I never see the previous Take's marks.","O1  If the stored Ideal Text still points at the previous Take, it is
 republished first and the new Take is the one baked.
 O2  If it is already current, it is baked as it stands, with no republish.","O1 -> test_a_stale_head_is_republished_and_the_new_take_is_baked

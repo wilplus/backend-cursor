@@ -136,6 +136,7 @@ def send_email_resend(
     from_addr: str | None = None,
     headers: dict[str, str] | None = None,
     attachments: list[dict] | None = None,
+    idempotency_key: str | None = None,
 ) -> dict:
     """Thin module-level wrapper around resend.Emails.send().
 
@@ -218,6 +219,8 @@ def send_email_resend(
     # resend.Emails.send() directly. Existing callers omit it -> no behaviour change.
     if attachments:
         params["attachments"] = attachments
+    if idempotency_key:
+        return _idempotent_email(params, idempotency_key)
     try:
         response = resend.Emails.send(params)
         logger.info("send_email_resend: accepted to=%s subject=%r", to, subject)
@@ -226,3 +229,23 @@ def send_email_resend(
         sentry_sdk.capture_exception(e)
         logger.warning("send_email_resend failed to=%s err=%r", to, e)
         raise
+
+
+def _idempotent_email(params: dict, key: str) -> dict:
+    """The installed SDK does not expose Resend's HTTP idempotency header."""
+    import requests
+
+    try:
+        response = requests.post(
+            "https://api.resend.com/emails", json=params,
+            headers={"Authorization": f"Bearer {config.RESEND_API_KEY}", "Idempotency-Key": key},
+            timeout=12, allow_redirects=False,
+        )
+        response.raise_for_status()
+        email_id = response.json().get("id")
+        if not isinstance(email_id, str) or not email_id:
+            raise ValueError("Missing delivery id")
+    except (requests.RequestException, ValueError, AttributeError) as error:
+        # The provider can include the private email content in a refusal.
+        raise RuntimeError(f"Email delivery failed ({type(error).__name__})") from None
+    return {"status": "sent", "sent": True, "resend_response": {"id": email_id}}

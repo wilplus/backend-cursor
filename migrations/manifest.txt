@@ -567,3 +567,4 @@
 0529	a_take_keeps_the_speakers_review_edits.sql
 0530	a_person_keeps_their_chat_structure.sql
 0531	a_chat_turn_keeps_its_artifact.sql
+0532	a_speaker_can_request_a_private_human_coach_review.sql

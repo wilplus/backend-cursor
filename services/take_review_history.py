@@ -94,7 +94,8 @@ def practice_runs(database, user_id: str, arc_id: str, take_ids: set[str]) -> di
         cursor = rows[-1]["id"]
 
 
-def walk_steps(database, user_id: str, arc_id: str, take_id: str, *, exchange: bool = False) -> list[dict]:
+def walk_steps(database, user_id: str, arc_id: str, take_id: str, *,
+               exchange: bool = False, shared_at: str | None = None) -> list[dict]:
     """A Take's saved walk, or its complete exchange, oldest first."""
     rows: list[dict] = []
     cursor = None
@@ -105,6 +106,8 @@ def walk_steps(database, user_id: str, arc_id: str, take_id: str, *, exchange: b
                  .eq("metadata->>arc_id", arc_id).eq("metadata->>take_session_id", take_id))
         if not exchange:
             query = query.eq("kind", "walk_step")
+        if shared_at is not None:
+            query = query.lte("created_at", shared_at)
         if cursor is not None:
             query = query.gt("id", cursor)
         batch = query.order("id").limit(500).execute().data or []
