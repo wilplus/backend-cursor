@@ -17891,3 +17891,15 @@ The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/b
 Stopping the mic prepares an editable transcript in the current chat's composer. Send posts the text with the recording beneath it in the same bubble. Delivery feedback uses the new attempt's own evidence. When the reply retries a cited fragment, a network retry keeps that exact recording and source.
 
 The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N691 · One chat, no screens outside it: the walk, the lenses and the insight cards go** (founder, Claude Code chat, 24 November 2026: "no external feedback walk should exist anymore", "This is just one chat that can have multiple types of bubbles", and "agreed", "OK", "OK" on the plan). Updates N682, N683, N685 and N689; completes N685 for every entry.
+
+1. **The Feedback walk is the project chat.** After the official recording the chat shows a moment to be proud of, asks questions, and gives one moment to correct, always with its intervention (N685, N686). No separate walk screen exists. A moment shown in a chat bubble reaches the coach's queue as the walk's moment did (the record "opened"), and the coach's feedback shown there counts as seen.
+2. **The Ideal Text is a bubble in the project chat** that the speaker can minimise. Its earlier versions open inside the same bubble, and the helper words stay until the speaker picks new ones. It has no full-screen view from any entry, the coach's bubble included.
+3. **One link.** `/chat?take=<Take>` opens that Take's project chat on its coach bubble, or the newest one. The WhatsApp message and the coach-feedback email send only this. `session` is read as its old name. Links with `lens`, `idealArc`, `arc`, `mode`, `feedback` or `insight` open the chat (on the named Take when one is given), and the address drops them. No project is addressed by its arc on screen or in a link; storage keeps its columns.
+4. **Insights come only when asked**, in either chat, in the speaker's own words: worked out at that moment from their Takes and their outcomes, the messages they sent and how their speaking comes across, answered in words in an ordinary reply (Never 1). No insight card or results card appears on its own.
+5. **Principles, strengths, life goals and "your why" are bubbles of the main chat**, and the Sunday note is a principles bubble. Tapping one continues in the chat; none opens a screen of its own.
+
+What stops: the walk screen, the full-screen Ideal Text, the lens screens, the insight and results cards, and the old links' screens. The single chat that behaves the same everywhere is a separate change.
+
+The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), [Ideal Text](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md) and [Principles](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md).
