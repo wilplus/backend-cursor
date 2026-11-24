@@ -17867,3 +17867,9 @@ The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/b
 Requests for criticism or a weaker moment get one grounded observation and a concrete way to work on that exact passage. Asking to try an intervention here keeps the referenced moment in the same Take. The reply offers the Picker's currently available intervention for that moment, such as Sniper, an AI audio example or a video from the coach. The Picker owns the match and its serving rules. The chat can give a grounded cue when an activity is unavailable, without promising a tool.
 
 The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N687 · Find and practise a project recording fragment by its subject** (founder, Speaking Coach evals Codex chat, 24 November 2026, “the part when I was talking about the cars”). Extends N663, N683, N685 and N686.
+
+Project Chat can find a described passage in the project's authorised recordings, play that exact clip and offer its currently available practice when requested. It uses the passage's spoken words and any delivery cues it has. If the speaker says it felt insecure, reflect their experience in everyday words and ask what made that moment feel difficult when the cause matters. A reframing cue or a concrete preparation step can help. Connect a lack of knowledge or resources to what the speaker reports, treating it as a possibility until they confirm it. The clip is playable when only its words are available to the coach. The same reply carries the exact reference and practice request, including after Ideal Text.
+
+The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
