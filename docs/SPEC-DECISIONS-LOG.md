@@ -17861,3 +17861,9 @@ Open with the strongest grounded moment from the Take and ask how it sounded to 
 When practice is done for now, offer the Ideal Text inline with its slides and helper words. Below it, give a brief readiness assessment in words based on the Take and recent practice, then invite another rehearsal. The offered action is the existing **Record the next take** link. The conversation can be folded into the same Take recap and reopened for playback. The fresh flow uses the Take’s own praise and feedback in place of canned announcements.
 
 The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N686 · A weaker moment in Project Chat invites its available practice** (founder, Speaking Coach Codex chat, 24 November 2026). Extends N672, N683 and N685.
+
+Requests for criticism or a weaker moment get one grounded observation and a concrete way to work on that exact passage. Asking to try an intervention here keeps the referenced moment in the same Take. The reply offers the Picker's currently available intervention for that moment, such as Sniper, an AI audio example or a video from the coach. The Picker owns the match and its serving rules. The chat can give a grounded cue when an activity is unavailable, without promising a tool.
+
+The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
