@@ -829,3 +829,72 @@ def test_a_valid_follow_up_survives_an_extra_model_question():
     with patch("services.llm.chat_complete", return_value=_config_result(words + " Will they be ready?")):
         reply, _ = project_chat.answer(database, USER, ARC, "Can you help me sharpen the ask?", take_session_id=TAKE)
     assert reply["answer"] == words
+
+
+@pytest.mark.parametrize("selection, use_mic", [("The one I just recorded.", True), ("The Take.", False)])
+def test_delivery_question_lets_the_speaker_choose_the_scoped_recording_after_reload(selection, use_mic):
+    database = FakeDB(audience="The board", goal="Approve the plan")
+    database.takes.sessions[ARC][-1]["transcription_language"] = "pl"
+    clip = "fed26b2c-279c-4ee0-8639-03723fc07f14"
+    question = "Do I sound confident when I talk like that?"
+    database.project_rows.extend([
+        {"client_id": "cited", "kind": "text", "role": "bot", "body": "Here is the board pitch.",
+         "metadata": {"arc_id": ARC, "coach_moment": {"arc_id": ARC, "take_session_id": TAKE, "snippet_id": "s2"}},
+         "client_created_at": "2026-11-18T09:10:00Z"},
+        {"client_id": clip, "kind": "text", "role": "user", "body": question,
+         "metadata": {"arc_id": ARC, "take_session_id": TAKE, "voice_clip": True},
+         "client_created_at": "2026-11-18T09:11:00Z"},
+    ])
+    evidence = {"transcript": question, "delivery": "Delivery across the whole passage: natural rise and fall"}
+    with patch("services.lounge_voice_reply.read_analysis", return_value=evidence) as read, \
+            patch("services.llm.chat_complete") as llm:
+        clarification, _ = project_chat.answer(database, USER, ARC, question, take_session_id=TAKE, user_client_id=clip)
+        assert clarification["answer"] == "Do you mean the fragment from your Take or the moment you just recorded?"
+        llm.assert_not_called()
+        database.project_rows.append(
+            {"client_id": "clarification", "kind": "text", "role": "bot", "body": clarification["answer"],
+             "metadata": {**clarification["row_metadata"], "reply_to_client_id": clip},
+             "client_created_at": "2026-11-18T09:12:00Z"}
+        )
+        project_chat.clear_cache()
+        llm.return_value = (SimpleNamespace(text="Your voice lifts naturally at the end.") if use_mic
+                            else _config_result("You leave the decision room to land."))
+        result, _ = project_chat.answer(
+            database, USER, ARC, selection, take_session_id=TAKE,
+            user_client_id="8c66a885-a914-4ac4-bd07-3b859db37751",
+        )
+        prompt = json.loads(llm.call_args.kwargs["user"])
+        assert "TARGET CONTENT LANGUAGE: English (en)" in llm.call_args.kwargs["system"]
+        if use_mic:
+            assert prompt["question"] == question
+            assert prompt["spoken_words"] == question
+            assert "natural rise and fall" in prompt["observations"]
+            assert "board" not in llm.call_args.kwargs["user"]
+            assert result["row_metadata"]["chat_voice_focus"] == {"source": "clip", "turn_id": clip}
+        else:
+            assert "I am speaking to the board" in llm.call_args.kwargs["user"]
+            assert question in llm.call_args.kwargs["user"]
+            assert "natural rise and fall" not in llm.call_args.kwargs["user"]
+        assert not database.global_thread_read
+        read.assert_called_with(database, USER, clip, ARC)
+
+
+def test_chat_recording_can_be_coached_in_an_owned_project_before_its_first_take():
+    database = FakeDB()
+    database.takes.sessions[ARC] = []
+    database.get_owner_principal_for_user = lambda user: {"id": "principal-1"} if user == USER else None
+    database.get_project_for_owner = lambda arc, principal: database.project if (arc, principal) == (ARC, "principal-1") else None
+    clip = "fed26b2c-279c-4ee0-8639-03723fc07f14"
+    question = "Czy brzmię tutaj pewnie?"
+    database.project_rows.append(
+        {"client_id": clip, "kind": "text", "role": "user", "body": question,
+         "metadata": {"arc_id": ARC, "voice_clip": True}, "client_created_at": "2026-11-18T09:11:00Z"}
+    )
+    with patch("services.lounge_voice_reply.read_analysis", return_value={
+        "transcript": question, "delivery": "pace: comfortable", "language": "pl",
+    }), patch("services.llm.chat_complete", return_value=SimpleNamespace(text="Mówisz w spokojnym, równym rytmie.")):
+        result, _ = project_chat.answer(database, USER, ARC, question, user_client_id=clip)
+
+    assert result["answer"] == "Mówisz w spokojnym, równym rytmie."
+    assert result["row_metadata"]["arc_id"] == ARC
+    assert database.takes.sessions[ARC] == []

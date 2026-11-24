@@ -728,9 +728,10 @@ def v2_explore_arc_will_question_voice(arc_id):
     recording is transcribed under the caller's processing authorization and
     its words are the answer, as typed words are; the Lounge gets the
     speaker's voice bubble with the words and Will's reply. The recording is
-    not kept. 200 {messages} · 400 · 404 · 413 · 422 · 500"""
+    kept only if the speaker sends the prepared clip as a chat message.
+    200 {messages} · 400 · 404 · 413 · 422 · 500"""
     from routes.v2.voice_notebook import _adapter
-    from services.will_question import QuestionError, answer_voice, hear_answer_words
+    from services.will_question import QuestionError, answer_voice
     try:
         owned, sessions = _arc_owned_by_caller(arc_id)
         take = str(request.form.get("take_session_id") or "")
@@ -745,11 +746,16 @@ def v2_explore_arc_will_question_voice(arc_id):
             duration = None
         user_id = str(request.user_id)
         if request.form.get("transcribe_only") == "1":
-            words, duration_ms = hear_answer_words(
-                _adapter(user_id), upload.read(), user_id=user_id, take=take,
-                filename=upload.filename or "answer.webm", duration_ms=duration,
+            from routes.v2.common import _is_valid_uuid
+            from services.chat_voice_attempt import hear
+            snippet = request.form.get("snippet_id")
+            voice = hear(
+                _adapter(user_id), upload.read(), user=user_id, take=take,
+                filename=upload.filename or "answer.webm", duration=duration,
+                turn=request.form.get("voice_turn_id"), project=str(arc_id),
+                snippet=snippet if _is_valid_uuid(snippet) else None,
             )
-            return jsonify({"text": words, "duration_ms": duration_ms}), 200
+            return jsonify(voice), 200
         messages = answer_voice(db, _adapter(user_id), upload.read(), user_id=user_id,
                                 arc_id=str(arc_id), take_session_id=take,
                                 filename=upload.filename or "answer.webm", duration_ms=duration)

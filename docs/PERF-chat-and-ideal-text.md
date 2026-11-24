@@ -46,6 +46,16 @@ recording order, including pieces with words alone. The earlier clip stays in
 history. The reply can cite a later playable fragment and offer a concrete
 cue or wording from that evidence.
 
+The small chat mic transcribes once and returns a signed receipt bound to the
+audio and chat turn. Sending the message keeps the clip and its analysis in
+`lounge_voice_replies`. The parent message supplies the project and Take
+link. The coach resolves the clip from owner-scoped conversation history and
+asks which recording to use if a question could refer to both. Short clips
+use the Take's core delivery measurements and the speaker's existing
+Willfidence reference when sufficient data is available. Only qualitative
+observations reach the coach. Erasing the parent message erases the clip and
+its analysis.
+
 For a general request to improve, a published tempo fix uses the same
 timestamp-based passage as Sniper. A request about a named or cited fragment
 continues to use that fragment.

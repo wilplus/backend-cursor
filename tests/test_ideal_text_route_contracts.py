@@ -160,13 +160,14 @@ def test_spoken_follow_up_uses_the_owned_take_transcriber_then_returns_words():
     from services import will_question
 
     app = Flask(__name__)
-    adapter = object()
+    adapter = MagicMock()
     form = {"take_session_id": TAKE, "transcribe_only": "1",
             "duration_ms": "1800", "audio": (BytesIO(b"recording"), "answer.webm")}
     with app.test_request_context("/", method="POST", data=form), \
             patch.object(route, "_arc_owned_by_caller", return_value=(True, SESSIONS)), \
             patch.object(voice_notebook, "_adapter", return_value=adapter), \
-            patch.object(will_question, "hear_answer_words", return_value=("Why did that work?", 1800)) as heard, \
+            patch.object(will_question, "hear_answer_transcription",
+                         return_value=("Why did that work?", 1800, {})) as heard, \
             patch.object(will_question, "answer_voice") as answer:
         request.user_id = USER
         view = inspect.unwrap(route.v2_explore_arc_will_question_voice)
@@ -193,7 +194,8 @@ def test_chat_voice_without_a_take_checks_recording_authority_and_returns_only_w
     with app.test_request_context(method="POST", data={
             "duration_ms": "1800", "audio": (BytesIO(b"recording"), "answer.webm")}), \
             patch.object(voice_notebook, "_adapter", return_value=adapter), \
-            patch.object(will_question, "hear_answer_words", return_value=("Why did that work?", 1800)) as heard, \
+            patch.object(will_question, "hear_answer_transcription",
+                         return_value=("Why did that work?", 1800, {})) as heard, \
             patch.object(coaching, "answer_chat") as answer:
         request.user_id = USER
         response, status = view()

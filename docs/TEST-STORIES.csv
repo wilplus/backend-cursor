@@ -922,6 +922,10 @@ cannot be converted into a pending user turn.
 O3  Only the pending claim that owns the user row can mark it terminal.","O1 -> test_claim_adapter_stamps_only_the_matching_optimistic_user_row_once
 O2 -> test_claim_adapter_refuses_mismatched_or_bot_rows_without_writing
 O3 -> test_completion_adapter_compares_claim_and_pending_state",The database's unique client id and conditional update are the cross-worker arbitration point for a persisted chat retry.
+tests/test_chat_voice_attempt.py,Story,"As a speaker practising in chat, I can hear and revisit the same recording after sending or retrying an edited caption.","O1  The receipt binds the original speech to the exact owner's audio and
+message. Only Send keeps the audio, full evidence, and playback.
+O2  A retry keeps one clip and reads its existing evidence. Other owners
+and erased messages cannot play it or use its analysis.","O1, O2 -> test_prepared_clip_is_attached_once_with_its_own_private_analysis",
 tests/test_chat_widget.py,Story,"As a person in WillpowerLab, I want my own chat on my website, so that anyone there can write to me, I answer as in any chat, and they sign up after asking to get my answer (N591).","O1  Before the visitor writes, with no card in the way, the website chat
 learns only whose chat it is, my welcome and how a visitor may write,
 as my chat's setup says: no fixed questions; a wrong or replaced link,

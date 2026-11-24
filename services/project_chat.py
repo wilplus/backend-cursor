@@ -1990,6 +1990,71 @@ def _review_focus(database: Any, context: ProjectChatContext, anchor: dict) -> d
     }
 
 
+def _voice_reply_before_first_take(database, user: str, arc: str, turn: str, question: str):
+    from services import chat_voice_reference
+    from services.project_deletion import ProjectDeletionService
+
+    owner = database.get_owner_principal_for_user(user)
+    visibility = ProjectDeletionService(database)
+    if (not owner or not database.get_project_for_owner(arc, str(owner["id"]))
+            or arc in visibility.erased_projects([arc]) or arc in visibility.archived_projects([arc])):
+        return None
+    reference = chat_voice_reference.resolve(
+        database, user, turn, question, project=arc, rows=_project_rows(database, user, arc, [0]),
+    )
+    if reference is None:
+        return None
+    language = resolve_content_language(typed_message=question, fallback=(reference.evidence or {}).get("language"))
+    text = chat_voice_reference.feedback(reference, language, user, arc)
+    return {
+        "answer": text, "bubbles": _split_bubbles(text), "show_record_ui": False,
+        "row_metadata": {"project_chat": True, "arc_id": arc, **reference.metadata},
+    }, "project_chat"
+
+
+def _route_chat_voice(database, context: ProjectChatContext, turn: str, question: str, anchor: dict | None):
+    from services import chat_voice_reference
+
+    reference = chat_voice_reference.resolve(
+        database, context.user_id, turn, question, project=context.arc_id,
+        has_take=True, rows=context.project_rows,
+    )
+    if reference is None:
+        return None, question, anchor
+    if reference.source != "take":
+        language = resolve_content_language(
+            typed_message=question, fallback=_target_language(context, reference.question),
+        )
+        text = chat_voice_reference.feedback(reference, language, context.user_id, context.arc_id)
+        state = derive_state(context, context.project_rows, None)
+        return _reply(context, state, text, extra_metadata=reference.metadata), question, anchor
+    if not _dict(anchor).get("snippet_id"):
+        cited = next(_cited_project_moments(context.project_rows[-8:], context.arc_id), {})
+        if (cited.get("take_session_id") == context.take_session_id
+                and any(p.sources[0].snippet_id == cited["snippet_id"]
+                        and p.sources[0].take_id == context.take_session_id for p in context.recorded_passages)):
+            anchor = {"step": "feedback", "snippet_id": cited["snippet_id"]}
+    return None, reference.question, anchor
+
+
+def _fill_live_review(context: ProjectChatContext, review: dict) -> None:
+    seen = set()
+    for row in context.project_rows:
+        meta = _dict(row.get("metadata"))
+        if meta.get("take_session_id") == context.take_session_id:
+            snippet = meta.get("snippet_id") or _dict(meta.get("coach_moment")).get("snippet_id")
+            if isinstance(snippet, str):
+                seen.add(snippet)
+    review.update({
+        "live": True,
+        "moments_already_shown": [
+            f"M{index}" for index, item in enumerate(context.feedback_moments)
+            if item.get("snippet_id") and item["snippet_id"] in seen
+        ],
+    })
+
+
+
 def answer(
     database: Any,
     user_id: str,
@@ -1999,6 +2064,7 @@ def answer(
     take_session_id: Optional[str] = None,
     review_focus: Any = None,
     live_take_feedback: bool = False,
+    user_client_id: Optional[str] = None,
 ) -> tuple[dict, str]:
     """Answer a Project Chat turn without entering the global chat router."""
     question = " ".join((question or "").split()).strip()
@@ -2006,31 +2072,23 @@ def answer(
         raise ValueError("question must be a non-empty string")
     user = str(user_id)
     arc = str(arc_id)
-    context = build_context(
-        database,
-        user,
-        arc,
-        take_session_id=take_session_id,
-    )
+    try:
+        context = build_context(database, user, arc, take_session_id=take_session_id)
+    except ProjectChatNotFound:
+        if user_client_id and not take_session_id:
+            if reply := _voice_reply_before_first_take(database, user, arc, user_client_id, question):
+                return reply
+        raise
     from services import will_question
 
     anchor = review_anchor(review_focus)
+    if user_client_id:
+        reply, question, anchor = _route_chat_voice(database, context, user_client_id, question, anchor)
+        if reply is not None:
+            return reply
     review = _review_focus(database, context, anchor) if anchor else None
     if review and live_take_feedback:
-        seen = set()
-        for row in context.project_rows:
-            meta = _dict(row.get("metadata"))
-            if meta.get("take_session_id") == context.take_session_id:
-                snippet = meta.get("snippet_id") or _dict(meta.get("coach_moment")).get("snippet_id")
-                if isinstance(snippet, str):
-                    seen.add(snippet)
-        review.update({
-            "live": True,
-            "moments_already_shown": [
-                f"M{index}" for index, item in enumerate(context.feedback_moments)
-                if item.get("snippet_id") and item["snippet_id"] in seen
-            ],
-        })
+        _fill_live_review(context, review)
     open_q = None if review else will_question.open_question(database, user, arc_id=arc)
     state = derive_state(context, context.project_rows, open_q)
     if review:

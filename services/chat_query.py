@@ -1329,11 +1329,16 @@ def answer_chat(database, *, user_id, question: str, history, context,
             return finalize(*stop)
         focus = context.get("review_focus") if isinstance(context, dict) else None
         live_feedback = isinstance(context, dict) and context.get("live_take_feedback") is True
+        review_options: dict[str, Any] = {}
+        if focus is not None:
+            review_options["review_focus"] = focus
+        if live_feedback:
+            review_options["live_take_feedback"] = True
+        if user_client_id:
+            review_options["user_client_id"] = user_client_id
         return finalize(*project_chat.answer(
             database, str(user_id), str(project_id), question,
-            take_session_id=take_id,
-            **({"review_focus": focus} if focus is not None else {}),
-            **({"live_take_feedback": True} if live_feedback else {}),
+            take_session_id=take_id, **review_options,
         ))
     if screen:
         history = screen_history(history)
@@ -1345,6 +1350,20 @@ def answer_chat(database, *, user_id, question: str, history, context,
         stop = _coach_intercept(database, user_id, question, context, history, app_config)
         if stop:
             return finalize(*stop)
+        if user_id and user_client_id:
+            from services import chat_voice_reference
+            from services.content_language import resolve_content_language
+
+            reference = chat_voice_reference.resolve(database, str(user_id), user_client_id, question)
+            if reference is not None:
+                language = resolve_content_language(
+                    typed_message=question, fallback=(reference.evidence or {}).get("language"),
+                )
+                text = chat_voice_reference.feedback(reference, language, str(user_id))
+                return finalize({
+                    "answer": text, "bubbles": [text], "show_record_ui": False,
+                    "row_metadata": reference.metadata,
+                }, "speaking_coach")
     for failure, intercept in _intercepts(user_id, app_config, ordinary_coach=ordinary_coach):
         try:
             claimed = intercept(user_id, question, context, history)

@@ -1524,6 +1524,14 @@ def hear_answer_words(adapter: Any, audio: bytes, *, user_id: str, take: str, fi
     """The words of a voice answer and its length, heard under the caller's
     authorization (the plan's own transcriber call). Raises
     ``QuestionError`` when it is empty, too long, or no words are heard."""
+    words, duration, _ = hear_answer_transcription(
+        adapter, audio, user_id=user_id, take=take, filename=filename, duration_ms=duration_ms)
+    return words, duration
+
+
+def hear_answer_transcription(adapter: Any, audio: bytes, *, user_id: str, take: str, filename: str,
+                              duration_ms: Optional[int]) -> tuple[str, Optional[int], dict]:
+    """Hear once and retain the same transcriber's word timings for this turn."""
     if not audio:
         raise QuestionError("EMPTY_AUDIO", "No audio.")
     if len(audio) > _VOICE_MAX_BYTES or (duration_ms or 0) > (_VOICE_MAX_SECONDS + 5) * 1000:
@@ -1536,7 +1544,7 @@ def hear_answer_words(adapter: Any, audio: bytes, *, user_id: str, take: str, fi
     words = " ".join(_words(result).split())[:_VOICE_WORDS]
     if not words:
         raise QuestionError("NO_WORDS", "No words heard.", 422)
-    return words, duration_ms or int(float(result.get("duration") or 0) * 1000) or None
+    return words, duration_ms or int(float(result.get("duration") or 0) * 1000) or None, result
 
 
 def _safety_rows(user_id: str, take: str, rnd: int, words: str, at: str) -> list[dict]:

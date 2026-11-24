@@ -568,3 +568,4 @@
 0530	a_person_keeps_their_chat_structure.sql
 0531	a_chat_turn_keeps_its_artifact.sql
 0532	a_speaker_can_request_a_private_human_coach_review.sql
+0533	a_spoken_lounge_reply_keeps_its_recording.sql
