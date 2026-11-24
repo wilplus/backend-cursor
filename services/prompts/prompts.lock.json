@@ -356,6 +356,11 @@
       "module": "coaching_evidence",
       "sha256": "b37d1272d2ae4b5637161e95d8d89d13acbcd8b9401a4283150ddc6883f074ec"
     },
+    "project_chat.live_feedback": {
+      "kind": "source_ref",
+      "module": "pending",
+      "sha256": "c177acc4223a7a58fb1be6e0164c3428c59dbb5e63fe15b604efcb5d259f36d2"
+    },
     "project_chat.reflection": {
       "kind": "static",
       "module": "coaching_evidence",
