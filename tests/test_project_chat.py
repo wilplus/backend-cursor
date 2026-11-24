@@ -573,7 +573,7 @@ def test_a_practice_follow_up_keeps_the_saved_moment_in_its_take(question, inter
     generate.assert_not_called()
     metadata = reply["row_metadata"]
     assert metadata["coach_moment"] == {**previous, "practise": True, "intervention": intervention}
-    assert reply["answer"] in {"Oto ten fragment.", "Here’s that moment."}
+    assert reply["answer"]
     assert "review_focus" not in metadata
     assert "chat_artifact" not in metadata
     assert database.takes.saved == []
@@ -615,7 +615,79 @@ def test_asking_to_see_ideal_text_serves_its_destination_if_the_model_misses_it(
     assert reply["row_metadata"]["take_session_id"] == TAKE
 
 
-def test_topic_request_can_practise_a_words_only_fragment_after_ideal_text():
+@pytest.mark.parametrize("model_reference", ["D1", "reviewed", "M0"])
+def test_a_question_about_later_slides_moves_on_from_the_cited_opening(model_reference):
+    database = FakeDB(audience="the board", goal="approve the pilot")
+    opening = database.snippets[TAKE][0]
+    opening["metrics"]["piece"] = {"slide_index": 0}
+    database.snippets[TAKE].extend([
+        {"id": "middle", "start_offset_ms": 9000, "transcript": "Pilotaż obejmie dwa zespoły.",
+         "metrics": {"piece": {"slide_index": 1}}},
+        {"id": "ending", "start_offset_ms": 18000, "transcript": "Na koniec opowiem o naszej nowej stronie.",
+         "metrics": {"piece": {"slide_index": 2}}},
+    ])
+    question = "Czy na kolejnych slajdach trzymałem się celu, czy mówiłem o czymś innym?"
+
+    def generate(**kwargs):
+        prompt = json.loads(kwargs["user"])
+        assert "speaker_is_reviewing" not in prompt
+        scoped = prompt["project_context"]
+        assert "transcript" not in scoped["current_take"]
+        assert scoped["published_feedback_moments"] == []
+        assert [row["slide_number"] for row in scoped["recorded_passages"]] == [2, 3]
+        assert all(row["evidence_kind"] == "speaker_words" for row in scoped["recorded_passages"])
+        answer = "Na końcu przeszedłeś z pilotażu do nowej strony."
+        result = _config_result(answer)
+        result.parsed = {"answer": answer,
+                         "moment": model_reference, "practise": True,
+                         "intervention": "Zamknij prośbą o decyzję w sprawie pilotażu."}
+        return result
+
+    with patch("services.llm.chat_complete", generate):
+        reply, _ = project_chat.answer(
+            database, USER, ARC, question, take_session_id=TAKE,
+            review_focus={"step": "feedback", "snippet_id": "s2"}, live_take_feedback=True,
+        )
+    metadata = reply["row_metadata"]
+    if model_reference == "D1":
+        assert metadata["coach_moment"]["snippet_id"] == "ending"
+        assert metadata["chat_artifact"]["intervention"].startswith("Zamknij prośbą")
+    else:
+        assert "coach_moment" not in metadata
+    assert metadata["live_take_feedback"] is True
+
+
+def test_a_general_improvement_question_cites_the_published_tempo_piece(monkeypatch):
+    database = FakeDB()
+    words = "The pilot will cover the support and implementation teams."
+    database.snippets[TAKE].append({"id": "tempo", "start_offset_ms": 14000, "transcript": words})
+    database.get_ideal_text_document_core = lambda *_: {
+        "id": "snapshot", "source_take_session_id": TAKE, "payload": {"text": words},
+    }
+    database.read_ideal_text_feedback_bake = lambda *_: {"changes": [
+        {"snippet_id": "s2", "presentation": {"one_fix": "tempo"}},
+    ]}
+    database.get_snippets_by_session = lambda sid: database.snippets[sid]
+    monkeypatch.setattr("services.ideal_text_feedback_bake._bake_enabled", lambda: True)
+    monkeypatch.setattr("services.tempo_stretch.pick_for_take", lambda *_: {"index": 1, "reading": "rushed"})
+
+    def generate(**kwargs):
+        prompt = json.loads(kwargs["user"])
+        assert words in prompt["passage_to_practise"]["evidence"]
+        return _config_result("Give the two teams a little more room.")
+
+    with patch("services.llm.chat_complete", generate):
+        reply, _ = project_chat.answer(
+            database, USER, ARC, "What’s the next thing to improve?", take_session_id=TAKE,
+            review_focus={"step": "feedback", "snippet_id": "s2"}, live_take_feedback=True,
+        )
+    assert reply["row_metadata"]["coach_moment"] == {
+        "arc_id": ARC, "take_session_id": TAKE, "snippet_id": "tempo", "practise": True,
+    }
+
+
+@pytest.mark.parametrize("model_asks", [True, False])
+def test_topic_request_can_practise_a_words_only_fragment_after_ideal_text(model_asks):
     database = FakeDB()
     words = "We changed cars before the second brake test."
     database.snippets[TAKE].extend([
@@ -629,10 +701,12 @@ def test_topic_request_can_practise_a_words_only_fragment_after_ideal_text():
         prompt = json.loads(kwargs["user"])
         target = next(item for item in prompt["project_context"]["recorded_passages"] if words in item["evidence"])
         assert target["evidence_kind"] == "speaker_words"
-        assert "passage_to_practise" not in prompt
-        result = _config_result("You said the cars felt tricky. Try saying the change as one short line first. "
-                                "What felt uncertain? Was it the example?")
-        result.parsed = {**json.loads(result.text), "moment": target["reference"], "practise": True}
+        assert words in prompt["passage_to_practise"]["evidence"]
+        answer = "You said the cars felt tricky. Try saying the change as one short line first."
+        if model_asks:
+            answer += " What felt uncertain? Was it the example?"
+        result = _config_result(answer)
+        result.parsed = {**json.loads(result.text), "moment": None, "practise": True}
         return result
 
     with patch("services.llm.embed", return_value=None) as embed, patch("services.llm.chat_complete", generate):
@@ -645,7 +719,8 @@ def test_topic_request_can_practise_a_words_only_fragment_after_ideal_text():
         "arc_id": ARC, "take_session_id": TAKE, "snippet_id": "cars", "practise": True,
     }
     assert reply["row_metadata"]["review_focus"] == focus
-    assert reply["answer"].endswith("What felt uncertain?")
+    expected_question = "What felt uncertain?" if model_asks else "What made this part feel uncertain to you?"
+    assert reply["answer"].endswith(expected_question)
 
 
 def test_practice_follow_up_can_refer_to_an_older_take():

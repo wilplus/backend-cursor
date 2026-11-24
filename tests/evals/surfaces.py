@@ -204,9 +204,10 @@ def _project_chat(inp: dict) -> dict:
         live_take_feedback=inp.get("live_take_feedback") is True,
     )
     metadata = reply["row_metadata"]
+    moment = metadata.get("coach_moment") or {}
     output = {
-        "answer": reply["answer"], "moment": (metadata.get("coach_moment") or {}).get("snippet_id"),
-        "practise": bool((metadata.get("coach_moment") or {}).get("practise")),
+        "answer": reply["answer"], "moment": moment.get("snippet_id"),
+        "practise": bool(moment.get("practise")), "practice_tool": moment.get("intervention"),
         "destination": (metadata.get("review_destination") or {}).get("step"),
     }
     if inp.get("include_wording"):

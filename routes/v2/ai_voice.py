@@ -6,6 +6,7 @@
                                                          return its state
   GET  /v2/user/confidence-practice/<id>/ai-voice        the clip's state
   POST /v2/user/confidence-practice/<id>/ai-voice/play   one play
+  POST /v2/user/lounge/moment/<snippet_id>/ai-voice     example in the chat
   GET/POST/DELETE /v2/user/ai-voice                      the card: state,
                                                          Turn on, Delete
 
@@ -28,6 +29,7 @@ from routes.v2.blueprint import v2_bp
 from routes.v2.common import _is_valid_uuid
 from services import ai_voice_clip, ai_voice_clone
 from services.db import db
+from services.refusal import Refusal
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +66,33 @@ def v2_practice_ai_voice(practice_id):
         sentry_sdk.capture_exception(error)
         return jsonify({"demo": "video" if ai_voice_clip._has_video(practice) else "none",
                         "clip": None}), 200
+
+
+@v2_bp.route("/user/lounge/moment/<snippet_id>/ai-voice", methods=["POST"])
+@require_auth
+@operational_purpose_disabled("personalized_exercise_recommendation")
+@consent_choice_required("personalised_practice")
+def v2_chat_moment_ai_voice(snippet_id):
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"code": "INVALID_INPUT"}), 400
+    arc_id, take_id = body.get("arc_id"), body.get("take_session_id")
+    if not all(isinstance(value, str) and _is_valid_uuid(value) for value in (arc_id, take_id, snippet_id)):
+        return jsonify({"code": "INVALID_INPUT"}), 400
+    try:
+        result = ai_voice_clip.prepare_chat_example(
+            db, arc_id=arc_id, take_id=take_id, snippet_id=snippet_id,
+            user_id=str(request.user_id),
+        )
+    except Refusal as error:
+        return jsonify(error.body), error.status
+    except Exception as error:  # noqa: BLE001 — keep the original clip playable in chat
+        logger.warning("AI voice example unavailable in chat", exc_info=True)
+        sentry_sdk.capture_exception(error)
+        return jsonify({"code": "AI_VOICE_FAILED"}), 503
+    response = jsonify(result)
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
 
 
 @v2_bp.route("/user/confidence-practice/<practice_id>/ai-voice/play", methods=["POST"])

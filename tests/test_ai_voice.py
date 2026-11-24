@@ -79,6 +79,7 @@ from __future__ import annotations
 import contextlib
 import re
 import uuid
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
@@ -87,6 +88,7 @@ from config import Config
 from services import ai_voice_clip, ai_voice_clone, ai_voice_prompt, ai_voice_severity
 from services import ai_voice_store as store
 from services.elevenlabs_client import Speech, VoiceProviderError
+from services.refusal import Refusal
 
 OWNER = "11111111-1111-1111-1111-111111111111"
 SENTENCE = "We think the timing matters because the window closes once incumbents match our price"
@@ -304,6 +306,51 @@ def _run_pipeline(db, practice, voices, heard, pcm=None, objects=None, decode=No
         cid, p, database=db, provider=voices, transcribe=lambda _a, _language: heard,
         put_object=put, decode=decode or (lambda _a: pcm if pcm is not None else _pcm_with_pause(1.0)),
         provider_usage={"used": 0}), sign=lambda b, k: f"https://signed/{k}")
+
+
+def test_chat_audio_uses_the_exact_recorded_piece_and_resumes_the_same_practice(monkeypatch):
+    practice = _practice()
+    take = practice["take_session_id"]
+    snippet = practice["snippet_id"]
+    database = _Db(practice, _snip(190), TAKE)
+    database.get_confident_voice_practice_by_moment = Mock(side_effect=[None, practice])
+    monkeypatch.setattr("services.lounge_clips.owned_chat_moment", Mock(return_value=(
+        {"arc_id": "project"}, database.snippet,
+    )))
+    content = "Opening.\n\n" + SENTENCE
+    build = Mock(return_value={"text": content, "pieces": [
+        {"snippet_id": snippet, "slide_index": 2, "start": 10, "end": len(content)},
+    ]})
+    monkeypatch.setattr("services.transcript_document.build_transcript_document", build)
+    can_practise = Mock(return_value=True)
+    monkeypatch.setattr("services.take_door.practice_allowed", can_practise)
+    start = Mock(return_value=(practice, True))
+    monkeypatch.setattr("services.practice_start.start_practice", start)
+    ensure = Mock(return_value={"demo": "ai_voice", "clip": {"state": "pending"}})
+    monkeypatch.setattr(ai_voice_clip, "ensure", ensure)
+    monkeypatch.setattr(ai_voice_clip, "principal_for", Mock(return_value="principal"))
+
+    options = {"take_id": take, "snippet_id": snippet, "user_id": OWNER}
+    with _on():
+        with pytest.raises(Refusal) as refused:
+            ai_voice_clip.prepare_chat_example(database, arc_id="different-project", **options)
+        assert refused.value.status == 404
+        can_practise.return_value = False
+        assert ai_voice_clip.prepare_chat_example(database, arc_id="project", **options)["clip"] is None
+        start.assert_not_called()
+        ensure.assert_not_called()
+        can_practise.return_value = True
+        first = ai_voice_clip.prepare_chat_example(database, arc_id="project", **options)
+        assert ai_voice_clip.prepare_chat_example(database, arc_id="project", **options) == first
+
+    assert first == {"practice_id": practice["id"], "demo": "ai_voice", "clip": {"state": "pending"}}
+    build.assert_called_once_with("project", database=database, session_id=take)
+    start.assert_called_once_with(database, snippet_id=snippet, user_id=OWNER, answer=None,
+                                  body={"kind": "plain", "evidence": {
+                                      "project_id": "project", "take_session_id": take, "slide_index": 2,
+                                      "paragraph_index": 1, "span": {"start": 10, "end": len(content)},
+                                  }})
+    ensure.assert_called_with(database, practice, user_id=OWNER, principal_id="principal")
 
 
 # ── which one problem: severity against the speaker's own usual ──────────

@@ -41,6 +41,22 @@ gets a question about the fragment's words. If a follow-up generation fails in
 an established project, the reply indicates the failure instead of reopening
 the setup conversation.
 
+A question about subsequent slides reads later passages of the active Take in
+recording order, including pieces with words alone. The earlier clip stays in
+history. The reply can cite a later playable fragment and offer a concrete
+cue or wording from that evidence.
+
+For a general request to improve, a published tempo fix uses the same
+timestamp-based passage as Sniper. A request about a named or cited fragment
+continues to use that fragment.
+
+An explicit request for AI audio, Sniper or a coach video keeps the cited
+fragment's Take and carries its requested tool in the reply. AI audio uses
+the existing authorised voice service and the same practice row per moment.
+It can prepare a spoken example when the exact clip has recorded words and no
+published exercise. The inline player refreshes the same example as it becomes
+ready. Sniper and coach video use the available activity for that exact moment.
+
 In Speaking Coach (`place=speaking`), ordinary conversation uses deterministic
 routing and one `SPEC_SPEAKING_COACH` generation. Questions scoped to a Take
 use one `SPEC_SPEAKING_COACH_TAKE` generation to ground the reflection in its

@@ -25,13 +25,13 @@ logger = logging.getLogger(__name__)
 
 
 _CHAT_INTERVENTION = re.compile(
-    r"\b(?:(?P<sniper>sniper|perimeter)|(?P<ai_audio>ai (?:audio|voice|example)|"
-    r"(?:przykład|głos|nagranie) ai)|(?P<coach_video>coach(?:'s)? (?:video|clip)|"
+    r"\b(?:(?P<sniper>sniper(?:a|em|ze)?|perimeter)|(?P<ai_audio>ai (?:audio|voice|example)|"
+    r"(?:audio|przykład|głos|nagranie) ai)|(?P<coach_video>coach(?:'s)? (?:video|clip)|"
     r"(?:wideo|film) (?:od |z )?trener\w*))\b", re.IGNORECASE,
 )
 _REQUEST_ACTION = re.compile(
-    r"\b(?:show|play|hear|listen|try|give|use|want|see|pokaż\w*|odtwórz\w*|posłucha\w*|"
-    r"zobacz\w*|sprób\w*|chcę|puś\w*|daj)\b", re.IGNORECASE,
+    r"\b(?:show|play|hear|listen|try|give|use|want|see|get|make|generate|pokaż\w*|odtwórz\w*|posłucha\w*|"
+    r"zobacz\w*|sprób\w*|chcę|puś\w*|daj|włącz\w*|zrób\w*|wygeneruj\w*|poproszę)\b", re.IGNORECASE,
 )
 _NEGATED_REQUEST = re.compile(
     r"^(?:please )?(?:don['’]t|do not)\b|\bnie (?:poka[żz]\w*|odtwarz\w*|chcę)\b", re.IGNORECASE,
@@ -57,11 +57,10 @@ def chat_moment_reference(arc_id: str, take_id: str, snippet_id: str,
     }
 
 
-def read_chat_moment(database: Any, user_id: str, take_id: str,
-                     snippet_id: str, *, include_practice: bool = False) -> Optional[dict]:
-    """Resolve exactly the requested moment after checking current access."""
+def owned_chat_moment(database: Any, user_id: str, take_id: str,
+                      snippet_id: str) -> Optional[tuple[dict, dict]]:
+    """Resolve a clip only while its exact Take belongs to the speaker."""
     from services.project_deletion import ProjectDeletionService
-    from services.snippet_audio_url import resolve_snippet_audio_url
     from services.speaker_lookup import _takes_in_force
 
     take = database.takes.v2_get_session(take_id, user_id)
@@ -78,6 +77,18 @@ def read_chat_moment(database: Any, user_id: str, take_id: str,
     snippet = database.get_snippet_by_id(snippet_id, user_id=user_id)
     if not snippet or str(snippet.get("session_id") or "") != take_id:
         return None
+    return take, snippet
+
+
+def read_chat_moment(database: Any, user_id: str, take_id: str,
+                     snippet_id: str, *, include_practice: bool = False) -> Optional[dict]:
+    """Refresh playback for the authorised fragment."""
+    from services.snippet_audio_url import resolve_snippet_audio_url
+
+    moment = owned_chat_moment(database, user_id, take_id, snippet_id)
+    if moment is None:
+        return None
+    take, snippet = moment
     start, length = snippet.get("start_offset_ms"), snippet.get("duration_ms")
     if type(start) is not int or start < 0 or type(length) is not int or length <= 0:
         return None
@@ -86,7 +97,7 @@ def read_chat_moment(database: Any, user_id: str, take_id: str,
         return None
     practice_id = _chat_moment_practice(database, user_id, take_id, snippet_id) if include_practice else None
     return {
-        "arc_id": arc_id, "take_index": take.get("take_index"),
+        "arc_id": str(take["arc_id"]), "take_index": take.get("take_index"),
         "audio_url": url, "start_offset_ms": start, "duration_ms": length,
         **({"practice_id": practice_id} if practice_id else {}),
     }
