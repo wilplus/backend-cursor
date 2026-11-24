@@ -48,6 +48,7 @@ class Evidence:
     sources: tuple[Source, ...] = ()
     section: str = ""
     slide: int | None = None
+    spoken_text: str = ""
 
 
 def excerpts(text: str) -> list[str]:
@@ -196,6 +197,7 @@ def delivery_evidence(label: str, take: dict, rows: list[dict], *, include_words
             f"Spoken passage: «{quote}». {description}".strip(),
             (_transcript_source(take, index, str(row["id"]) if row.get("id") else None),),
             section, index if has_deck or type(recorded_slide) is int else None,
+            spoken_text=spoken,
         ))
     return list(dict.fromkeys(out))
 

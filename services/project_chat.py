@@ -177,6 +177,23 @@ _SAME_MOMENT = re.compile(
     r"\b(?:try|practi[cs]e|repeat) (?:this|that|it)[?!. ]*$",
     re.IGNORECASE,
 )
+_FRAGMENT_TO_SHOW = re.compile(
+    r"\b(?:this|that|the) (?:exact )?(?:fragment|passage|clip|part|line|bit)\b|"
+    r"\b(?:ten|tamten|tego) fragment\w*\b",
+    re.IGNORECASE,
+)
+_SHOW_FRAGMENT_VERB = re.compile(
+    r"\b(?:find|show|give|play|hear|listen|send|read|see|pokaż\w*|podaj\w*|daj|"
+    r"znajdź\w*|odtwórz\w*|posłuchać|zobaczyć)\b",
+    re.IGNORECASE,
+)
+_TEXT_AND_RECORD = re.compile(
+    r"\b(?:show|see|read|get) (?:me )?(?:the |that |this )?text\b.{0,60}"
+    r"\b(?:record|re-record) (?:my (?:own )?(?:take|version)|it|(?:this|that) fragment)\b|"
+    r"\b(?:pokaż|zobaczyć|przeczytać) (?:mi )?(?:ten )?tekst\b.{0,60}\bnagrać\b",
+    re.IGNORECASE,
+)
+_QUOTED_FRAGMENT = re.compile(r'["“„«]([^"”»]{4,})["”»]')
 _PASSAGE_BY_DESCRIPTION = re.compile(
     r"\b(?:part|section|passage|moment\w*|bit|clip|fragment\w*|częś\w*),?\s+"
     r"(?:when|where|about|with|w któr\w*|kiedy|gdzie|o)\b|"
@@ -936,6 +953,86 @@ def _practice_referent(context: ProjectChatContext, question: str, review: Optio
     return None
 
 
+def _literal_fragment(text: str, passages: list[Evidence], current_take: str) -> Evidence | None:
+    spoken_turn = f" {normalize(text)} "
+    quotes = [normalize(quote) for quote in _QUOTED_FRAGMENT.findall(text)]
+    quotes = [quote for quote in quotes if len(quote.split()) >= 3]
+    subject = _PASSAGE_SUBJECT.search(text) if _PASSAGE_BY_DESCRIPTION.search(text) else None
+    topic = re.sub(r"^(?:the|a|an|my|our) ", "", normalize(subject.group(1))) if subject else ""
+    matches = []
+    for passage in passages:
+        words = normalize(passage.spoken_text)
+        if (len(words.split()) >= 4 and f" {words} " in spoken_turn
+                or any(f" {quote} " in f" {words} " for quote in quotes)
+                or len(topic) >= 3 and f" {topic} " in f" {words} "):
+            matches.append(passage)
+    in_take = [item for item in matches if item.sources[0].take_id == current_take]
+    candidates = in_take or matches
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _fragment_referent(context: ProjectChatContext, question: str, review: Optional[dict]) -> Evidence | None:
+    choices: dict[tuple[str, str | None], Evidence] = {
+        (item.sources[0].take_id, item.sources[0].snippet_id): item
+        for item in context.recorded_passages if item.sources[0].snippet_id and item.spoken_text
+    }
+    passages = list(choices.values())
+    if direct := _literal_fragment(question, passages, context.take_session_id):
+        return direct
+    if _QUOTED_FRAGMENT.search(question):
+        return None
+    anchor = _dict(_dict(review).get("anchor"))
+    if explicit := choices.get((context.take_session_id, anchor.get("snippet_id"))):
+        return explicit
+    # A prior turn may have used the exact words before the coach attached a clip.
+    # Search the project's own history and require an actual recorded match.
+    for row in reversed(context.project_rows[-20:]):
+        if row.get("role") == "bot":
+            reference = next(_cited_project_moments((row,), context.arc_id), {})
+            if isinstance(take := reference.get("take_session_id"), str):
+                if match := choices.get((take, reference["snippet_id"])):
+                    return match
+        if row.get("role") == "user" and (match := _literal_fragment(
+            str(row.get("body") or ""), passages, context.take_session_id,
+        )):
+            return match
+    return None
+
+
+def _answer_fragment_request(context: ProjectChatContext, state: ProjectChatState, question: str,
+                             language: str, review: Optional[dict]) -> tuple[dict, str] | None:
+    record = bool(_TEXT_AND_RECORD.search(question))
+    show = bool(_FRAGMENT_TO_SHOW.search(question) and _SHOW_FRAGMENT_VERB.search(question)
+                and not _PASSAGE_BY_DESCRIPTION.search(question))
+    if not (show or record):
+        return None
+    passage = _fragment_referent(context, question, review)
+    if not passage and not show and not any(
+        _FRAGMENT_TO_SHOW.search(str(row.get("body") or ""))
+        for row in context.project_rows[-4:] if row.get("role") == "user"
+    ):
+        return None  # This may be about the whole presentation or Ideal Text.
+    metadata = _answer_metadata(context, question, {}, None, review)
+    if _dict(review).get("live"):
+        metadata["live_take_feedback"] = True
+    if not passage or not (snippet := passage.sources[0].snippet_id):
+        prompt = ("Który fragment masz na myśli? Podaj kilka słów z nagrania."
+                  if language == "pl" else "Which fragment do you mean? Give me a few words from the recording.")
+        return _reply(context, state, prompt, fast_path=True, extra_metadata=metadata)
+
+    from services.lounge_clips import chat_moment_reference
+
+    source = passage.sources[0]
+    metadata["coach_moment"] = chat_moment_reference(
+        context.arc_id, source.take_id, snippet, practise=record or wants_practice(question),
+    )
+    text = f"„{passage.spoken_text}”" if language == "pl" else f"“{passage.spoken_text}”"
+    if record:
+        text += (" Możesz nagrać swoją wersję mikrofonem poniżej."
+                 if language == "pl" else " You can record your version with the mic below.")
+    return _reply(context, state, text, fast_path=True, extra_metadata=metadata)
+
+
 def _prompt_context(context: ProjectChatContext, state: ProjectChatState, passages: dict[str, Evidence]) -> dict:
     return {
         "project": {
@@ -1404,11 +1501,10 @@ def _model_turn(
     return _parse_model(result), result, model_ms
 
 
-def _model_answer(parsed: Optional[dict], *, question: str = "") -> str:
+def _model_answer(parsed: Optional[dict]) -> str:
     answer = _text(parsed.get("answer"), MAX_ANSWER_CHARS) if parsed else ""
-    if answer.count("?") > 1 and _asks_about_an_unsure_moment(question):
-        # Keep the observation and one question when the writer appends a
-        # second question on the same feeling.
+    if answer.count("?") > 1:
+        # Keep the grounded reply and its first question.
         answer = answer.split("?", 1)[0] + "?"
     if (
         not answer
@@ -1486,6 +1582,24 @@ def _answer_signed_will(
     )
 
 
+def _project_fallback(context: ProjectChatContext, state: ProjectChatState, language: str) -> str:
+    if state.phase == ConversationPhase.OPENING:
+        return _opening_fallback(context, state, language)
+    if state.phase == ConversationPhase.CONVERSATION:
+        return (
+            "Nie udało mi się odpowiedzieć na to pytanie. Wyślij je jeszcze raz."
+            if language == "pl" else
+            "I couldn’t finish that reply. Please send your question again."
+        )
+    return _setup_fallback(state, language)
+
+
+def _conversation_default(answer: str, state: ProjectChatState) -> bool:
+    return state.phase == ConversationPhase.CONVERSATION and normalize(answer) in {
+        normalize(_setup_fallback(state, language)) for language in ("en", "pl")
+    }
+
+
 def _answer_general(
     database: Any,
     user_id: str,
@@ -1535,18 +1649,16 @@ def _answer_general(
         review=review,
         practice_referent=practice_referent,
     )
-    model_answer = _model_answer(parsed, question=question)
+    model_answer = _model_answer(parsed)
+    if not review and _conversation_default(model_answer, state):
+        model_answer = ""
     if review and not model_answer:
         if state.audience_known or not _ASKS_ABOUT_AUDIENCE.search(question):
             raise RuntimeError("The selected review question did not produce an answer")
         answer_state = replace(state, next_slot="audience")
         model_answer = _setup_fallback(answer_state, target_language)
         parsed = None
-    answer = model_answer or (
-        _opening_fallback(context, state, target_language)
-        if state.phase == ConversationPhase.OPENING
-        else _setup_fallback(state, target_language)
-    )
+    answer = model_answer or _project_fallback(context, state, target_language)
     return _reply(
         context,
         state,
@@ -1728,6 +1840,8 @@ def answer(
     if review:
         state = replace(state, phase=ConversationPhase.CONVERSATION, next_slot="", open_question=None)
     target_language = _target_language(context, question)
+    if fragment := _answer_fragment_request(context, state, question, target_language, review):
+        return fragment
     if open_q and _meaningful_slot_answer(question):
         signed = _answer_signed_will(
             database,
