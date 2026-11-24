@@ -23,6 +23,8 @@ OUTCOME
       reload, without moving the active exchange.
   O9  A direct request to record again after Ideal Text offers the existing
       next-Take action.
+  O10 A request for the same fragment retrieves the exact recording and
+      words from the project even after a reply without an attached clip.
 PROVES   O1 -> test_context_is_bounded_to_current_project_and_carries_feedback_deck_ideal_text
          O2 -> test_state_skips_known_audience_and_goal_and_asks_one_slot_at_a_time
          O3 -> test_tone_and_content_language_are_passed_to_the_single_generation
@@ -32,6 +34,7 @@ PROVES   O1 -> test_context_is_bounded_to_current_project_and_carries_feedback_d
          O7 -> test_topic_request_can_practise_a_words_only_fragment_after_ideal_text
          O8 -> test_practice_follow_up_can_refer_to_an_older_take
          O9 -> test_record_again_is_available_after_ideal_text
+         O10 -> test_fragment_follow_ups_use_the_quoted_recording_when_the_first_reply_has_no_clip
 WHY      Project Chat redesign, 2026-11-18; preserve the current-project
          processing boundary and the Feedback walk's record -> process -> Take loop.
 
@@ -424,7 +427,8 @@ def test_invalid_opening_fallback_does_not_reask_known_audience_or_goal():
     assert response["answer"].count("?") == 1
 
 
-def test_invalid_conversation_fallback_stays_in_project_follow_up_mode():
+@pytest.mark.parametrize("invalid_answer", ["rating: 4/5", "What would you like to work through first?"])
+def test_invalid_conversation_reply_reports_the_failure_clearly(invalid_answer):
     database = FakeDB(audience="the board", goal="approve the plan")
     database.project_rows.append({
         "client_id": "prior-bot",
@@ -434,13 +438,9 @@ def test_invalid_conversation_fallback_stays_in_project_follow_up_mode():
         "metadata": {"arc_id": ARC, "project_chat": True, "next_slot": "conversation"},
         "client_created_at": "2026-11-18T10:05:00Z",
     })
-    with patch("services.llm.chat_complete", return_value=_config_result("rating: 4/5")):
-        response, _ = project_chat.answer(
-            database, USER, ARC, "What next?", take_session_id=TAKE
-        )
-
-    assert response["answer"] == "What would you like to work through first?"
-    assert "Who were you talking to?" not in response["answer"]
+    with patch("services.llm.chat_complete", return_value=_config_result(invalid_answer)):
+        reply, _ = project_chat.answer(database, USER, ARC, "What next?", take_session_id=TAKE)
+    assert reply["answer"] == "I couldn’t finish that reply. Please send your question again."
 
 
 def test_project_chat_rows_do_not_appear_in_the_speaking_coach_history():
@@ -649,3 +649,74 @@ def test_record_again_is_available_after_ideal_text():
         )
     assert reply["suggested_action"] == "record_again"
     assert reply["row_metadata"]["review_focus"] == focus
+
+
+def test_fragment_follow_ups_use_the_quoted_recording_when_the_first_reply_has_no_clip():
+    database = FakeDB(audience="the board", goal="approve the plan")
+    snippet = "cars"
+    words = "We changed cars before the second brake test."
+    database.snippets[TAKE].append({"id": snippet, "transcript": words})
+    for index, (role, body) in enumerate([
+        ("user", words),
+        ("user", "can you find this fragment anywhere?"),
+        ("bot", "Tak, ten fragment jest częścią obecnego nagrania."),
+    ]):
+        database.project_rows.append({
+            "role": role, "kind": "text", "body": body,
+            "client_created_at": f"2026-11-24T11:10:0{index}Z",
+            "metadata": {"arc_id": ARC, "project_chat": True},
+        })
+
+    with patch("services.llm.chat_complete") as generate:
+        reply, _ = project_chat.answer(database, USER, ARC, "can oyu give me that fragment?", take_session_id=TAKE)
+        assert reply["answer"] == f"“{words}”"
+        assert reply["row_metadata"]["coach_moment"] == {
+            "arc_id": ARC, "take_session_id": TAKE, "snippet_id": snippet, "practise": False,
+        }
+        database.project_rows.append({
+            "role": "bot", "kind": "text", "body": reply["answer"], "metadata": reply["row_metadata"],
+            "client_created_at": "2026-11-24T11:10:04Z",
+        })
+        retry, _ = project_chat.answer(database, USER, ARC,
+                                       "I would like to see the text and record my take of it.", take_session_id=TAKE)
+    generate.assert_not_called()
+    assert words in retry["answer"]
+    assert "record your version" in retry["answer"]
+    assert retry["row_metadata"]["coach_moment"] == {
+        **reply["row_metadata"]["coach_moment"], "practise": True,
+    }
+
+
+def test_fragment_request_marks_the_exact_older_clip_and_keeps_the_current_take():
+    database = FakeDB()
+    database.takes.sessions[ARC] += [_session(f"take-a{index}", index=index) for index in range(3, 6)]
+    original = {"arc_id": ARC, "take_session_id": "take-a1", "snippet_id": "s1", "practise": False}
+    database.project_rows.append({
+        "role": "bot", "kind": "text", "body": "That was the older opening.",
+        "metadata": {"arc_id": ARC, "project_chat": True, "coach_moment": original},
+    })
+    reply, _ = project_chat.answer(database, USER, ARC, "Can you play that fragment?", take_session_id="take-a5",
+                                   review_focus={"step": "ideal"}, live_take_feedback=True)
+    assert "The old opening." in reply["answer"]
+    assert reply["row_metadata"]["coach_moment"] == original
+    assert reply["row_metadata"]["take_session_id"] == "take-a5"
+    assert reply["row_metadata"]["live_take_feedback"] is True
+
+
+def test_missing_fragment_asks_for_a_few_words_instead_of_guessing():
+    database = FakeDB()
+    reply, _ = project_chat.answer(database, USER, ARC, "Pokaż mi ten fragment", take_session_id=TAKE)
+    assert "Podaj kilka słów z nagrania." in reply["answer"]
+    assert "coach_moment" not in reply["row_metadata"]
+
+
+def test_a_valid_follow_up_survives_an_extra_model_question():
+    database = FakeDB(audience="the board", goal="approve the plan")
+    database.project_rows.append({
+        "role": "bot", "kind": "text", "body": "The board is the audience.",
+        "metadata": {"arc_id": ARC, "project_chat": True},
+    })
+    words = "Give the board one clear decision. What should they approve today?"
+    with patch("services.llm.chat_complete", return_value=_config_result(words + " Will they be ready?")):
+        reply, _ = project_chat.answer(database, USER, ARC, "Can you help me sharpen the ask?", take_session_id=TAKE)
+    assert reply["answer"] == words

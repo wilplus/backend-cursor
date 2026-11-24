@@ -27,6 +27,13 @@ budget. The selected evidence reference serves the reply's exact recording
 and requests its currently available practice. A follow-up can resolve the
 last cited authorised Take from the existing project history in the same
 snippet batch, including when it is older than the recent Takes.
+A direct request to play or show that fragment can also match exact words from
+recent project turns when a prior reply carried no clip reference. The reply
+uses the recorded text and clip. A request to record the speaker's version can
+carry the same reference to its available practice. An unresolved reference
+gets a question about the fragment's words. If a follow-up generation fails in
+an established project, the reply indicates the failure instead of reopening
+the setup conversation.
 
 In Speaking Coach (`place=speaking`), ordinary conversation uses deterministic
 routing and one `SPEC_SPEAKING_COACH` generation. Questions scoped to a Take

@@ -3008,6 +3008,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O7** A topic request retrieves the exact passage even when the coach only has its words, and its practice points to the same recording.
 - **O8** Follow-up practice can use a previously cited authorised Take after reload, without moving the active exchange.
 - **O9** A direct request to record again after Ideal Text offers the existing next-Take action.
+- **O10** A request for the same fragment retrieves the exact recording and words from the project even after a reply without an attached clip.
 
 *Why:* Project Chat redesign, 2026-11-18; preserve the current-project processing boundary and the Feedback walk's record -> process -> Take loop. Project Chat contract tests. The fakes expose only one project at a time to make an accidental global thread read fail loudly. The model is patched at the shared LLM wrapper so the tests assert the actual prompt/model path without making a provider call.
 
