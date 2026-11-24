@@ -17873,3 +17873,9 @@ The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/b
 Project Chat can find a described passage in the project's authorised recordings, play that exact clip and offer its currently available practice when requested. It uses the passage's spoken words and any delivery cues it has. If the speaker says it felt insecure, reflect their experience in everyday words and ask what made that moment feel difficult when the cause matters. A reframing cue or a concrete preparation step can help. Connect a lack of knowledge or resources to what the speaker reports, treating it as a possibility until they confirm it. The clip is playable when only its words are available to the coach. The same reply carries the exact reference and practice request, including after Ideal Text.
 
 The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N688 · Book a call with Artur or send him a Take for private review** (founder, Take design Codex chat, 24 November 2026, approving the human coach handoff preview). Extends N683 and N685.
+
+An explicit request for a human coach or a contextual offer in the conversation can put **Book a call** and **Send Take to Artur** in one reply. Booking opens the live calendar and confirms the meeting with a calendar invite. Sending requires the speaker's confirmation of one exact Take and can include a short note. Artur receives a private link by email to the full recording, its Ideal Text with slides, and the Take's Feedback Walk and saved practice. His feedback returns to the project chat. The packet, the note and the human feedback are for private review and excluded from training and blind judgement. The candidate wording and timing after reappraisal or continued unease are for later calibration.
+
+The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
