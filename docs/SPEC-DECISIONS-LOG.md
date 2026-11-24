@@ -17879,3 +17879,15 @@ The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/b
 An explicit request for a human coach or a contextual offer in the conversation can put **Book a call** and **Send Take to Artur** in one reply. Booking opens the live calendar and confirms the meeting with a calendar invite. Sending requires the speaker's confirmation of one exact Take and can include a short note. Artur receives a private link by email to the full recording, its Ideal Text with slides, and the Take's Feedback Walk and saved practice. His feedback returns to the project chat. The packet, the note and the human feedback are for private review and excluded from training and blind judgement. The candidate wording and timing after reappraisal or continued unease are for later calibration.
 
 The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N689 · Retire the standalone Take Progress card** (founder, Take design Codex chat, 24 November 2026, asking to delete the card in the 14:53 Warsaw screenshot and its wiring). Updates N654, N666 and N670.
+
+Remove the standalone Progress card with its percentage, slide groups, attempt badges and two shortcuts, including the coach builder's sample card. The Take's own conversation is the place to review feedback and practice and open the Ideal Text. Each Take carries its recorded slide range for review and rehearsal.
+
+The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N690 · Put the transcript of a spoken chat reply in the composer** (founder, Take design Codex chat, 24 November 2026, asking for typed text in place of the crossed-out draft player). Updates N667 for Project Chat and Speaking Coach's conversational mic.
+
+Stopping the mic prepares an editable transcript in the current chat's composer. Send posts the text with the recording beneath it in the same bubble. Delivery feedback uses the new attempt's own evidence. When the reply retries a cited fragment, a network retry keeps that exact recording and source.
+
+The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
