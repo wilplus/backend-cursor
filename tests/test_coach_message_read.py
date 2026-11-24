@@ -166,12 +166,12 @@ def _opened(db, sessions, link):
 
 def test_a_late_word_on_take_1_sent_as_a_link_opens_take_1_s_word():
     mine = [dict(t, user_id="me") for t in TAKES[:2]]
-    for link in (feedback_path("arc1", T1), feedback_url("arc1", T1)):
+    for link in (feedback_path(T1), feedback_url(T1)):
         message = _opened(_Words([T1]), mine, link)
         assert message["text"] == "Word on 1."
         assert message["take_session_id"] == T1 and message["take_index"] == 1
     # Not my Take: the link opens the Take on screen, which has no word.
     theirs = [dict(TAKES[0], user_id="someone-else"), dict(TAKES[1], user_id="me")]
     db = _Words([T1])
-    assert _opened(db, theirs, feedback_path("arc1", T1)) is None
+    assert _opened(db, theirs, feedback_path(T1)) is None
     assert T1 not in db.asked

@@ -252,20 +252,14 @@ def remove_phone(database: Any, user_id: str) -> dict:
     return {"phone": None}
 
 
-def feedback_path(arc_id: Any = None, take_session_id: Any = None) -> str:
-    """Where the message opens, after the site: the project's walk on the
-    coach's feedback (`/chat?lens=<arc>`, the address the coach bubble opens;
-    founder 2026-10-14: tap and go), or the chat when the project is unknown.
-
-    THE LINK NAMES ITS TAKE (founder 2026-10-21, N77): `&take=<session_id>`
-    is the Take the coach wrote on, so a word left on an earlier Take opens
-    as that Take's word; a word shows on its own Take only."""
-    arc = str(arc_id or "").strip()
-    if not arc:
-        return "chat"
+def feedback_path(take_session_id: Any = None) -> str:
+    """Where the message opens, after the site: the Take's project chat on
+    its coach bubble (`/chat?take=<session_id>`, N691 item 3), or the chat
+    when the Take is unknown. The Take names the project, so no project id
+    rides the link; a word left on an earlier Take still opens as that
+    Take's word (N77)."""
     take = str(take_session_id or "").strip()
-    path = f"chat?lens={quote(arc, safe='')}"
-    return f"{path}&take={quote(take, safe='')}" if take else path
+    return f"chat?take={quote(take, safe='')}" if take else "chat"
 
 
 def _message_body(path: str = "chat") -> str:
@@ -388,11 +382,7 @@ def notify_coach_feedback_in(database: Any, user_id: Optional[str],
         if not phone:
             _log.info("whatsapp: no number saved for user=%s, nothing sent", user_id)
             return False
-        arc_id = None
-        if take_session_id:
-            session = database.v2_get_session_by_id(str(take_session_id)) or {}
-            arc_id = session.get("arc_id")
-        return send_whatsapp(str(phone), path=feedback_path(arc_id, take_session_id))
+        return send_whatsapp(str(phone), path=feedback_path(take_session_id))
     except Exception as e:  # noqa: BLE001 -- the coach's save stands either way
         _log.warning("whatsapp coach-feedback message failed user=%s: %s",
                      user_id, type(e).__name__)
