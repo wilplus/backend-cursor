@@ -1,4 +1,8 @@
-"""The blind "pick the most confident" (founder 2026-10-01, C5-b; Phase 8 of
+"""The blind "pick the most confident", gone from the app (founder,
+25 November 2026, N701): no sheet is sampled or answered any more. Only its
+ledger stays, over the answers already given.
+
+Was: the blind "pick the most confident" (founder 2026-10-01, C5-b; Phase 8 of
 the coach panel). On from 2026-10-08; the switch was deleted 2026-10-11.
 
 C5-b: "On a sample of blocks, the coach hears that block's candidate
@@ -34,11 +38,9 @@ DELETES every row about the speaker's Takes
 from __future__ import annotations
 
 import logging
-import random
 from collections import Counter
 from typing import Any, Iterable
 
-from services import pair_consent
 
 _log = logging.getLogger(__name__)
 
@@ -64,169 +66,9 @@ WORDING = {
 }
 
 
-def _admitted(database: Any, take_session_id: Any, memo: dict | None = None) -> bool:
-    """3.5 E4: this Take's speaker holds the training yes and has not
-    objected to the blind check. Memoised per call when given a dict."""
-    take = str(take_session_id or "")
-    if not take:
-        return False
-    if memo is not None and take in memo:
-        return memo[take]
-    ok = pair_consent.take_may_reach_a_coach_sheet(database, take)
-    if memo is not None:
-        memo[take] = ok
-    return ok
-
-
 # ── blocks worth asking about ─────────────────────────────────────────────
 
-def askable_blocks(frame: Any, *, take_session_id: str) -> list[dict]:
-    """The frozen frame's blocks with at least two eligible candidates and
-    a Manager pick: {block_id, take_session_id, candidate_ids, manager_pick}.
-    Pure."""
-    blocks = frame.get("blocks") if isinstance(frame, dict) else None
-    out: list[dict] = []
-    for block in blocks or []:
-        if not isinstance(block, dict) or not block.get("selected_candidate_id"):
-            continue
-        eligible = [c for c in (block.get("confidence_candidates") or [])
-                    if isinstance(c, dict) and c.get("eligibility") == "eligible"
-                    and c.get("snippet_id")]
-        if len(eligible) < MIN_CANDIDATES:
-            continue
-        pick = next((c for c in eligible
-                     if str(c.get("candidate_id")) == str(block["selected_candidate_id"])), None)
-        if pick is None:
-            continue
-        out.append({"block_id": str(block.get("block_id")), "take_session_id": str(take_session_id),
-                    "candidate_ids": [str(c["snippet_id"]) for c in eligible],
-                    "manager_pick": str(pick["snippet_id"])})
-    return out
-
-
-def sheet_clips(block: dict, *, rng: Any = None) -> list[str]:
-    """Up to three clip ids, the Manager's pick always among them, shuffled.
-    Pure."""
-    rng = rng or random.Random()
-    others = [c for c in block.get("candidate_ids") or [] if c != block.get("manager_pick")]
-    rng.shuffle(others)
-    chosen = [str(block["manager_pick"])] + others[:SHEET_SIZE - 1]
-    rng.shuffle(chosen)
-    return chosen
-
-
-def _room(database: Any, coach_id: str, week: str) -> int:
-    """What is left of the shared weekly cap for this coach's picks; nothing
-    once the founder cleared the line this week (0482): new ones come next
-    week."""
-    from services.error_presence_audit import WEEKLY_CAP
-    if database.blind_line_cleared("block_pick", coach_id, week):
-        return 0
-    spent = int(database.count_coach_blind_answers(coach_id, week) or 0)
-    pending = database.list_coach_block_picks_pending(coach_id) or []
-    return WEEKLY_CAP - spent - len(pending)
-
-
-def sample_for_coach(database: Any, *, coach_id: str, week: str,
-                     rng: Any = None) -> list[dict]:
-    """Fill this coach's week up to the shared cap with blocks they may
-    judge blind. [] off or when the cap is spent."""
-    from services.coach_exposure import exposed_clip_ids, record_exposure
-    rng = rng or random.Random()
-    room = _room(database, str(coach_id), week)
-    if room <= 0:
-        return []
-    done = {str(r.get("block_id")) for r in (database.list_coach_block_picks_by_coach(str(coach_id)) or [])
-            if isinstance(r, dict)}
-    walking = {str(t) for t in (database.list_takes_coach_is_walking(str(coach_id)) or [])}
-    admitted: dict = {}
-    written: list[dict] = []
-    for frame_row in database.list_recent_v3_frames(limit=200) or []:
-        if len(written) >= room:
-            break
-        if not isinstance(frame_row, dict):
-            continue
-        take = str(frame_row.get("take_session_id") or "")
-        if not take or take in walking:
-            continue
-        if not _admitted(database, take, admitted):
-            continue
-        for block in askable_blocks(frame_row.get("frame"), take_session_id=take):
-            if len(written) >= room or block["block_id"] in done:
-                continue
-            # A Take has one frame per policy version and they share block
-            # ids; the block is asked once (coach_block_pick_once).
-            done.add(block["block_id"])
-            if exposed_clip_ids(database, str(coach_id), block["candidate_ids"]):
-                continue
-            clips = sheet_clips(block, rng=rng)
-            try:
-                row = database.insert_coach_block_pick({
-                    "coach_id": str(coach_id), "take_session_id": take,
-                    "block_id": block["block_id"], "candidate_snippet_ids": clips,
-                    "manager_pick_snippet_id": block["manager_pick"],
-                    "policy_version": POLICY_VERSION,
-                    "frame_policy_version": frame_row.get("policy_version"),
-                    "week": week, "provenance": PROVENANCE,
-                })
-            except Exception as e:  # noqa: BLE001 -- one refused block never empties the queue
-                _log.warning("block pick not written coach=%s block=%s: %s",
-                             coach_id, block["block_id"], e)
-                continue
-            if isinstance(row, dict):
-                written.append(row)
-                for clip in clips:
-                    record_exposure(database, coach_id=str(coach_id), clip_id=clip, via="block_pick")
-    return written
-
-
 # ── the sheet and the answer ──────────────────────────────────────────────
-
-def queue(database: Any, *, coach_id: str) -> tuple[int, dict]:
-    """The coach's pending picks, audio only; the Manager's pick is never
-    in the payload."""
-    from services.snippet_audio_url import snippet_clip_playback, snippet_rows_by_id
-    pending = [r for r in (database.list_coach_block_picks_pending(str(coach_id)) or [])
-               if isinstance(r, dict)]
-    admitted = pair_consent.takes_may_reach_a_coach_sheet(
-        database, [r.get("take_session_id") for r in pending])
-    rows = [r for r in pending if admitted.get(str(r.get("take_session_id") or ""))]
-    snippets = snippet_rows_by_id(
-        database, [c for r in rows for c in (r.get("candidate_snippet_ids") or [])])
-    items = []
-    for n, row in enumerate(rows, start=1):
-        clips = []
-        for i, clip_id in enumerate(row.get("candidate_snippet_ids") or []):
-            snippet = snippets.get(str(clip_id)) or {}
-            # Audio and its window only (BLIND COACH): the parent ref plays
-            # only the clip once the offsets ride along.
-            clips.append({"clip_id": str(clip_id), "letter": "ABC"[i] if i < 3 else str(i + 1),
-                          **snippet_clip_playback(snippet, database)})
-        items.append({"pick_id": str(row.get("id")), "clips": clips, "n": n, "of": len(rows)})
-    return 200, {"items": items, "wording": WORDING}
-
-
-def answer(database: Any, *, coach_id: str, pick_id: str, body: Any) -> tuple[int, dict]:
-    """Body {pick_clip_id} or {cant_tell: true}: one answer, once."""
-    fields: dict = body if isinstance(body, dict) else {}
-    cant_tell = fields.get("cant_tell") is True
-    pick = fields.get("pick_clip_id")
-    if cant_tell == bool(pick):
-        return 400, {"code": "INVALID_INPUT", "error": "pick one clip, or say you can't tell"}
-    row = database.get_coach_block_pick(str(pick_id), str(coach_id))
-    if not isinstance(row, dict) or not _admitted(database, row.get("take_session_id")):
-        return 404, {"code": "NOT_FOUND", "error": "pick not found"}
-    if row.get("answered_at"):
-        return 409, {"code": "ALREADY_ANSWERED", "error": "That block is already answered."}
-    if pick and str(pick) not in {str(c) for c in (row.get("candidate_snippet_ids") or [])}:
-        return 400, {"code": "INVALID_INPUT", "error": "pick_clip_id is not on this sheet"}
-    saved = database.answer_coach_block_pick(pick_id=str(pick_id), coach_id=str(coach_id),
-                                             pick_snippet_id=str(pick) if pick else None,
-                                             cant_tell=cant_tell)
-    if not isinstance(saved, dict):
-        return 500, {"code": "V2_ERROR", "error": "Could not save the pick."}
-    return 200, {"recorded": True}
-
 
 # ── the ledger ─────────────────────────────────────────────────────────────
 

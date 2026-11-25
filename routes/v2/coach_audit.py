@@ -86,29 +86,6 @@ def v2_coach_error_audit_answer(audit_id):
         body=request.get_json(silent=True)))
 
 
-@v2_bp.route("/coach/block-picks", methods=["GET"])
-@require_admin_or_coach
-def v2_coach_block_picks_queue():
-    """This coach's pending block picks; an empty line is sampled up to
-    the shared cap."""
-    from services.coach_block_pick import queue, sample_for_coach
-    from services.error_presence_audit import week_key
-    return _run("block pick queue", lambda: _served(
-        "block_pick",
-        lambda: queue(db, coach_id=_coach_id()),
-        lambda: sample_for_coach(db, coach_id=_coach_id(), week=week_key())))
-
-
-@v2_bp.route("/coach/block-picks/<pick_id>/answer", methods=["POST"])
-@require_admin_or_coach
-def v2_coach_block_pick_answer(pick_id):
-    """Body {pick_clip_id} or {cant_tell: true}: one pick, once."""
-    from services.coach_block_pick import answer
-    return _run("block pick answer", lambda: answer(
-        db, coach_id=_coach_id(), pick_id=str(pick_id),
-        body=request.get_json(silent=True)))
-
-
 # ── The founder's ⋯ on a line (2026-10-20; migration 0482) ─────────────────
 
 @v2_bp.route("/coach/blind/<line>/clear", methods=["POST"])
@@ -125,7 +102,8 @@ def v2_coach_clear_blind_line(line):
         200, {"cleared": db.clear_blind_line(line, _coach_id(), week_key())}))
 
 
-# ── V4's two blind sheets (B1.8, B1.9; S-B8 A; migration 0453) ────────────
+# ── V4's blind sheet (B1.8; migration 0453). "Which sounds surer" (B1.9) and the
+#    blind block pick are gone from the app (N701); their answers stay readable. ──
 
 @v2_bp.route("/coach/v4-moment-picks", methods=["GET"])
 @require_admin_or_coach
@@ -147,29 +125,5 @@ def v2_coach_v4_moment_pick_answer(sheet_id):
     """Body {clip_id} or {none_needs_it: true}: one answer, once."""
     from services.v4_coach_sheets import pick_answer
     return _run("v4 moment pick answer", lambda: pick_answer(
-        db, rater_id=_coach_id(), sheet_id=str(sheet_id),
-        body=request.get_json(silent=True)))
-
-
-@v2_bp.route("/coach/v4-surer-pairs", methods=["GET"])
-@require_admin_or_coach
-def v2_coach_v4_surer_pairs_queue():
-    """"Which sounds surer": this rater's pending pairs; an empty line is
-    filled up to the week's cap. Two texts only; never the slice or the
-    level."""
-    from services.error_presence_audit import week_key
-    from services.v4_coach_sheets import fill_surer_sheets, surer_queue
-    return _run("v4 surer queue", lambda: _served(
-        "v4_surer",
-        lambda: surer_queue(db, rater_id=_coach_id()),
-        lambda: fill_surer_sheets(db, rater_id=_coach_id(), week=week_key())))
-
-
-@v2_bp.route("/coach/v4-surer-pairs/<sheet_id>/answer", methods=["POST"])
-@require_admin_or_coach
-def v2_coach_v4_surer_pair_answer(sheet_id):
-    """Body {answer: yes | no | cant_tell}: one answer, once."""
-    from services.v4_coach_sheets import surer_answer
-    return _run("v4 surer answer", lambda: surer_answer(
         db, rater_id=_coach_id(), sheet_id=str(sheet_id),
         body=request.get_json(silent=True)))

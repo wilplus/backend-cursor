@@ -1147,20 +1147,13 @@ O6 -> test_the_word_on_the_take_on_screen_is_served
 O7 -> test_a_late_word_on_take_1_goes_to_its_lounge_bubble_not_take_2
 O8 -> test_no_word_or_a_failed_read_serves_nothing
 O9 -> test_a_late_word_on_take_1_sent_as_a_link_opens_take_1_s_word","Founder 2026-10-19, N80 (D4, D7), approved two-phone prototype https://claude.ai/artifact/APk56PLZt6o6Cx9qUMKkuk. Founder 2026-10-18, N77 (contract 35g-6, superseding N48.3 Q11 A's earlier-Take fallback), landed with N95 on 2026-10-21; its links name the word's Take (founder, 2026-10-21)."
-tests/test_coach_panel_learning.py,Story,"As the founder, I want the coach panel's blind learning lanes (the error audit and the block pick) to stay blind, answered once, and only about speakers who said yes, so that learning never leaks into what coaches see or reaches a speaker who did not agree.","O1  An audit item takes one answer, once: a second answer is 409, a value
+tests/test_coach_panel_learning.py,Story,"As the founder, I want the coach panel's blind error audit to stay blind and answered once, so that learning never leaks into what coaches see. (The block pick is gone from the app, N701.)","O1  An audit item takes one answer, once: a second answer is 409, a value
 outside yes/no/cant_tell is 400.
 O2  The coach's sheets are blind (Never rule 2: no coach sees the
 machine's guess before answering): an audit item carries the clip and
 the error's own question, never whether the detector fired, its
-measurements or version; a block-pick sheet carries audio clips,
-never the Manager's pick or the words.
-O3  A Take whose speaker does not hold the training yes is never put on a
-block-pick sheet: nothing is written.
-O4  A block pick the database refuses (written by another writer first)
-is skipped and the rest are still written.","O1 -> test_an_audit_item_takes_one_answer_once
-O2 -> test_the_coach_sheets_are_blind
-O3 -> test_no_training_yes_writes_no_block_pick
-O4 -> test_a_refused_block_pick_is_skipped_and_the_rest_are_written","Founder 2026-10-01 (F6, C5-b). O4: a Take has one frame per policy version sharing block ids, and an insert refused by coach_block_pick_once (a 500) emptied the coach's queue."
+measurements or version.","O1 -> test_an_audit_item_takes_one_answer_once
+O2 -> test_the_coach_sheets_are_blind",Founder 2026-10-01 (F6).
 tests/test_coach_queue_bookmarks.py,Story,"As a coach, I want my queue to open fast and list each Take's bookmarked moments in the order the speaker said them.","O1  A Take's bookmarked moments come in talk order (start, then id), only
 those that exist in that Take; a Take whose bookmarks are not frozen
 yet waits for its text.
@@ -1766,8 +1759,8 @@ accounts made included, in all and per day; nobody else can read it.","O1 -> Fir
 O2 -> FirstVisitTest::test_the_founder_reads_the_whole_path","Founder 2026-10-29, N271."
 tests/test_founder_clears_a_blind_line.py,Story,"As the founder, I want to clear what waits on a blind list of the coach queue, so that it stays empty until next week's items come.","O1  A cleared item is never shown again.
 O2  A line cleared this week does not refill before next week, on each of
-the four lines.","O1 -> FounderClearsABlindLineTests::test_a_cleared_item_is_never_shown_again
-O2 -> FounderClearsABlindLineTests::test_a_line_cleared_this_week_waits_for_next_week","Founder 2026-10-20: the ⋯ on Do you hear it?, Pick the most confident, Pick the moment for feedback and Which sounds surer (""New ones come next week. Answers already given stay.""); 0482."
+the two lines still in the app.","O1 -> FounderClearsABlindLineTests::test_a_cleared_item_is_never_shown_again
+O2 -> FounderClearsABlindLineTests::test_a_line_cleared_this_week_waits_for_next_week","Founder 2026-10-20: the ⋯ on Do you hear it? and Pick the moment for feedback (""New ones come next week. Answers already given stay.""); 0482. Pick the most confident and Which sounds surer are gone (N701)."
 tests/test_golden_set_pool.py,Story,"As the founder, I want the golden set I judge to be drawn only from moments that real, blind, independent listeners labelled, so that the evaluation is measured against the same labels the app learns from (N111, B2).","The confidence pool offers a moment labelled blind by a coach or
 another speaker inside practice, and skips a speaker's own answer,
 an answer from any other lane, and an answer given after seeing
@@ -2147,13 +2140,11 @@ O2  Fails closed: an unreadable ledger, an unreadable Take or an
 unreadable blind-check objection reads as no.
 O3  E4 V4 coach sheets: only yes-speakers' Takes are written; after a
 withdrawal the sheet leaves the queue and cannot be answered.
-O4  E4 blind block pick: the same, for the coach's block pick.
-O5  E5 learned exercise order: only yes-speakers' tries are learned from;
+O4  E5 learned exercise order: only yes-speakers' tries are learned from;
 a withdrawal drops them at the next read.","O1 -> test_the_shared_read_says_yes_only_while_the_yes_is_held
 O2 -> test_every_unreadable_answer_reads_as_no
 O3 -> test_only_yes_speakers_reach_the_coach_sheets_and_a_withdrawal_empties_them
-O4 -> test_only_yes_speakers_reach_the_block_pick_and_a_withdrawal_empties_it
-O5 -> test_only_yes_speakers_teach_the_exercise_order","Privacy 3.5 section 4a, items E4 and E5 (founder signed 2026-10-08). The ledger here is a Python double: this file covers the Python lanes, not the SQL status function."
+O4 -> test_only_yes_speakers_teach_the_exercise_order","Privacy 3.5 section 4a, items E4 and E5 (founder signed 2026-10-08). The ledger here is a Python double: this file covers the Python lanes, not the SQL status function."
 tests/test_legal_citations.py,Guard,"Every file, line and commit cited in the counsel pack (legal/phase1-2026.1/ and every docs/legal/*.md) still resolves.","A cited path that no longer exists; a cited line past the end of
 its file or on a blank/bare comment rule; a frontend line citation
 with no commit next to it; a cited commit that is not an ancestor
@@ -2534,9 +2525,9 @@ O12 -> ModelApiTest::test_a_paid_answer_is_charged_once
 O13 -> ModelApiTest::test_the_download_file_keeps_only_your_own_cases_text
 O14 -> ModelApiTest::test_the_owners_version_file_holds_the_exams_result_only","The models' API and its money (migration a_business_can_buy_a_model_s_answers), served by services/model_api_store.py over services/model_api.py."
 tests/test_model_coach_tasks.py,Story,"As a coach who teaches models, I want the queue's tasks shown in the models tab as models being taught, each with what waits for me and opening where I answer it today, with nothing moved (N642 item 6, step one; N643 item 4).","O1  GET /v2/models/coach-tasks lists ""Moments to answer"", ""Do you hear
-it?"", ""Pick the most confident"", ""Pick the moment for feedback"" and
-""Which sounds surer"", each with this coach's waiting count as the
-panel counts it and where it opens; ``coming`` is the coming list.
+it?"" and ""Pick the moment for feedback"", each with this coach's
+waiting count as the panel counts it and where it opens; nothing is
+listed as coming (N701).
 O2  Reading it fills no line and answers nothing; a line that cannot be
 read waits 0.
 O3  Someone who is not a coach, or has neither ring, gets empty lists,
@@ -3038,6 +3029,15 @@ TestTheStatusReadsInOneTrip::test_an_unauthorized_guest_reads_the_same_status,
 TestTheStatusReadsInOneTrip::test_a_claimed_guest_resolves_through_the_one_resolver,
 TestTheStatusReadsInOneTrip::test_it_answers_nothing_rather_than_guess
 O4 -> TestTheStatusReadsInOneTrip::test_only_the_service_role_may_call_it","ML provenance audit 2026-09-22 (B-2, B-3): a permit could be minted for one guest's recording under another person's consent."
+tests/test_picker_golden.py,Story,"As the founder, I want my moment labels to measure both pickers, so that what I teach in the Pattern Library says how often the app picked the moment I would, and served an intervention where I chose one.","O1  An error or praise label agrees when the Take's frozen selection
+showed that clip; a control label agrees when it did not; an unsure
+label and a Take with no frozen selection are not counted as agreement.
+O2  On an error label, a served exercise and a chosen tool agree, and so
+do none and none; one without the other differs. The exercise and
+the tool are listed side by side, never mapped by guess.
+O3  Training Corpus labels are counted, not compared: they have no walk.","O1 -> test_moment_agreement_follows_what_the_take_showed
+O2 -> test_intervention_agreement_is_served_against_chosen
+O3 -> test_corpus_labels_are_counted_not_compared",N701: the labels were saved and nothing read them.
 tests/test_pieces_bind_to_paragraphs.py,Story,"As a speaker, I want each spoken piece attached to the right paragraph of my Ideal Text (slide first, then span, never a guess), so that feedback lands on the paragraph I actually said. (Ideal Text -> feedback: an item with no paragraph is attached to nothing.)","O1  On a slide with one paragraph, the piece gets that paragraph's id,
 whatever words it carries.
 O2  On a slide with several paragraphs, the piece's span picks the
@@ -4980,15 +4980,12 @@ O2  NEVER-2: a coach's own login (anon, authenticated) cannot read the
 sheets, where the machine's picks are stored; only service_role can
 read and write them.","O1 -> test_a_pick_sheet_is_answered_with_one_of_its_clips
 O2 -> test_only_the_service_role_opens_the_door","0453, V4 B1.8/B1.9, build plan D-ML-13 (BLIND COACH)."
-tests/test_v4_coach_sheets.py,Story,"As a coach, I want the pick and ""surer"" sheets to show me only clips and words, so that I answer without the machine's guess.","O1  The pick sheet shows only the clip, a letter, the words and the audio
+tests/test_v4_coach_sheets.py,Story,"As a coach, I want the pick sheet to show me only clips and words, so that I answer without the machine's guess.","O1  The pick sheet shows only the clip, a letter, the words and the audio
 timing, never the machine's ids, sureness or choice.
-O2  The ""surer"" sheet shows only the two wordings, never the slice,
-level, bar or the quality being varied.
-O3  A Take with two feedback versions still fills the sheets, each moment
+O2  A Take with two feedback versions still fills the sheets, each moment
 asked once, and a moment the database refuses is skipped, not an
 error.","O1 -> test_the_sheet_payload_is_blind
-O2 -> test_the_pair_payload_is_blind
-O3 -> test_a_take_with_two_frames_still_fills_the_pick_sheets",Never-rule 2: coach judgements stay blind.
+O2 -> test_a_take_with_two_frames_still_fills_the_pick_sheets",Never-rule 2: coach judgements stay blind.
 tests/test_v4_pick_logging.py,Story,"As the founder, I want every candidate's pick chance logged in the dark frame but never in what is served, so that we can study picks without showing numbers.","O1  NEVER-1: the service frame carries the Take's blocks and candidates and
 no pick log or pick chance.
 O2  The dark frame logs every candidate once, with its chance (1.0 for the

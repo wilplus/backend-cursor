@@ -10,14 +10,12 @@ OUTCOME
       unreadable blind-check objection reads as no.
   O3  E4 V4 coach sheets: only yes-speakers' Takes are written; after a
       withdrawal the sheet leaves the queue and cannot be answered.
-  O4  E4 blind block pick: the same, for the coach's block pick.
-  O5  E5 learned exercise order: only yes-speakers' tries are learned from;
+  O4  E5 learned exercise order: only yes-speakers' tries are learned from;
       a withdrawal drops them at the next read.
 PROVES   O1 -> test_the_shared_read_says_yes_only_while_the_yes_is_held
          O2 -> test_every_unreadable_answer_reads_as_no
          O3 -> test_only_yes_speakers_reach_the_coach_sheets_and_a_withdrawal_empties_them
-         O4 -> test_only_yes_speakers_reach_the_block_pick_and_a_withdrawal_empties_it
-         O5 -> test_only_yes_speakers_teach_the_exercise_order
+         O4 -> test_only_yes_speakers_teach_the_exercise_order
 WHY      Privacy 3.5 section 4a, items E4 and E5 (founder signed 2026-10-08).
          The ledger here is a Python double: this file covers the Python
          lanes, not the SQL status function.
@@ -28,7 +26,6 @@ import random
 
 import pytest
 
-from services import coach_block_pick as bp
 from services import error_presence_audit as epa
 from services import exercise_learned_order as elo
 from services import pair_consent as pc
@@ -176,74 +173,6 @@ def test_only_yes_speakers_reach_the_coach_sheets_and_a_withdrawal_empties_them(
 
 
 # ── E4: the blind block pick ─────────────────────────────────────────────
-
-class _PickDb(_Ledger):
-    def __init__(self):
-        super().__init__()
-        self.picks: list[dict] = []
-
-    def count_coach_blind_answers(self, coach, week):
-        return 0
-
-    def blind_line_cleared(self, line, owner_id, week):
-        return False
-
-    def list_coach_block_picks_pending(self, coach):
-        return [p for p in self.picks if not p.get("answered_at")]
-
-    def list_coach_block_picks_by_coach(self, coach):
-        return list(self.picks)
-
-    def list_takes_coach_is_walking(self, coach):
-        return []
-
-    def list_recent_v3_frames(self, limit=200):
-        def block(take):
-            return {"block_id": f"{take}-b1", "selected_candidate_id": "c2",
-                    "confidence_candidates": [
-                        {"candidate_id": f"c{i}", "snippet_id": f"{take}-s{i}",
-                         "eligibility": "eligible"} for i in (1, 2, 3)]}
-        return [{"take_session_id": t, "policy_version": "v3", "frame": {"blocks": [block(t)]}}
-                for t in TAKES]
-
-    def list_coach_clip_exposures(self, *a, **k):
-        return []
-
-    def record_coach_clip_exposure(self, *a, **k):
-        return True
-
-    def insert_coach_block_pick(self, row):
-        row = {**row, "id": f"pick-{len(self.picks)}"}
-        self.picks.append(row)
-        return row
-
-    def get_coach_block_pick(self, pick_id, coach):
-        return next((p for p in self.picks if p["id"] == pick_id), None)
-
-    def answer_coach_block_pick(self, *, pick_id, coach_id, pick_snippet_id, cant_tell):
-        row = self.get_coach_block_pick(pick_id, coach_id)
-        row.update(answered_at="x")
-        return row
-
-    def get_snippet_by_id(self, clip):
-        return {"id": clip, "audio_segment_path": None}
-
-    def get_snippet_playback_rows(self, ids, with_transcript=False):
-        return [self.get_snippet_by_id(c) for c in ids]
-
-
-def test_only_yes_speakers_reach_the_block_pick_and_a_withdrawal_empties_it():
-    db = _PickDb()
-    written = bp.sample_for_coach(db, coach_id="c", week="w", rng=random.Random(2))
-    assert sorted(w["take_session_id"] for w in written) == ["t-gone", "t-yes"]
-    db.withdraw("p-gone")
-    status, body = bp.queue(db, coach_id="c")
-    assert status == 200 and len(body["items"]) == 1
-    gone = next(w for w in written if w["take_session_id"] == "t-gone")
-    kept = next(w for w in written if w["take_session_id"] == "t-yes")
-    assert bp.answer(db, coach_id="c", pick_id=gone["id"], body={"cant_tell": True})[0] == 404
-    assert bp.answer(db, coach_id="c", pick_id=kept["id"], body={"cant_tell": True})[0] == 200
-
 
 # ── E5: the learned exercise order ───────────────────────────────────────
 

@@ -10,9 +10,7 @@ has opened this week reads 0 here until it is opened.
   moments      "Moments to answer": the walk's waiting moments
                (``coach_moments_queue.walk_for_coach``), opened in the queue
   hear_it      "Do you hear it?" (``error_presence_audit``)
-  block_pick   "Pick the most confident" (``coach_block_pick``)
   moment_pick  "Pick the moment for feedback" (``v4_coach_sheets``, B1.8)
-  surer        "Which sounds surer" (``v4_coach_sheets``, B1.9)
 
 Only for a coach (the panel's own guard: admin or allowlisted coach) with
 the ring ``chat_builder`` or ``ai_models``; anyone else reads empty lists.
@@ -43,19 +41,14 @@ def _items(result: tuple[int, dict]) -> int:
 
 
 def _sheets(database: Any, coach_id: str) -> list[dict]:
-    from services import coach_block_pick, error_presence_audit, v4_coach_sheets
-    pick, surer = v4_coach_sheets.WORDING["pick"], v4_coach_sheets.WORDING["surer"]
+    from services import error_presence_audit, v4_coach_sheets
+    pick = v4_coach_sheets.WORDING["pick"]
     return [
         {"id": "hear_it", "kind": "hear_it", "title": error_presence_audit.WORDING["title"],
          "screen": "error_audit",
          "read": lambda: _items(error_presence_audit.queue(database, coach_id=coach_id))},
-        {"id": "block_pick", "kind": "block_pick", "title": coach_block_pick.WORDING["short_title"],
-         "screen": "block_pick",
-         "read": lambda: _items(coach_block_pick.queue(database, coach_id=coach_id))},
         {"id": "moment_pick", "kind": "moment_pick", "title": pick["title"], "screen": "v4_moment_pick",
          "read": lambda: _items(v4_coach_sheets.pick_queue(database, rater_id=coach_id))},
-        {"id": "surer", "kind": "surer", "title": surer["title"], "screen": "v4_surer",
-         "read": lambda: _items(v4_coach_sheets.surer_queue(database, rater_id=coach_id))},
     ]
 
 
@@ -64,7 +57,8 @@ def tasks(database: Any, coach_id: str, *, is_coach: bool, moments_waiting: Call
     from services import model_coming
     if not model_coming.on(database, coach_id):
         return {"tasks": [], "coming": []}
-    coming = model_coming.listed(coach_id)
+    # "Images, coming" is no longer listed here (N701): it trains nothing.
+    coming: list = []
     if not is_coach:
         return {"tasks": [], "coming": coming}
     out = [{"id": "moments", "kind": "moments", "title": MOMENTS, "line": "",

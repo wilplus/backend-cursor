@@ -1,17 +1,13 @@
 """
-STORY    As a coach, I want the pick and "surer" sheets to show me only clips
-         and words, so that I answer without the machine's guess.
+STORY    As a coach, I want the pick sheet to show me only clips and words, so that I answer without the machine's guess.
 OUTCOME
   O1  The pick sheet shows only the clip, a letter, the words and the audio
       timing, never the machine's ids, sureness or choice.
-  O2  The "surer" sheet shows only the two wordings, never the slice,
-      level, bar or the quality being varied.
-  O3  A Take with two feedback versions still fills the sheets, each moment
+  O2  A Take with two feedback versions still fills the sheets, each moment
       asked once, and a moment the database refuses is skipped, not an
       error.
 PROVES   O1 -> test_the_sheet_payload_is_blind
-         O2 -> test_the_pair_payload_is_blind
-         O3 -> test_a_take_with_two_frames_still_fills_the_pick_sheets
+         O2 -> test_a_take_with_two_frames_still_fills_the_pick_sheets
 WHY      Never-rule 2: coach judgements stay blind.
 """
 from __future__ import annotations
@@ -109,23 +105,3 @@ def test_a_take_with_two_frames_still_fills_the_pick_sheets():
     written = cs.fill_pick_sheets(db, rater_id="c1", week="w", rng=random.Random(3), now=NOW)
     ids = [w["block_id"] for w in written]
     assert written and len(ids) == len(set(ids)) and "b0" not in ids
-
-def test_the_pair_payload_is_blind():
-    """Post-merge review of 0453: the rows are read whole (select *), and the
-    payload is built field by field, so a pair's slice, level, bar and the
-    quality it varies never reach the coach (BLIND COACH, AC-9)."""
-    class Db:
-        def list_v4_surer_sheets(self, rater):
-            return [{"id": "s1", "rater_id": rater, "rater_role": "coach",
-                     "take_session_id": "t", "block_id": "b",
-                     "said_text": "I think we grew.", "new_text": "We grew.",
-                     "varied_quality": "hedging", "version_rule": "surer-pair-v1-lexical",
-                     "slice": "above", "level": 0.71, "bar": 0.6,
-                     "bar_version": "reached-bar-v0-placeholder", "week": "w",
-                     "answer": None, "answered_at": None}]
-    status, body = cs.surer_queue(Db(), rater_id="c1")
-    assert status == 200
-    assert [set(item) for item in body["items"]] == [{"sheet_id", "said", "new", "n", "of"}]
-    text = json.dumps(body["items"])
-    for leak in ("above", "0.71", "0.6", "hedging", "slice", "level", "bar", "reached-bar"):
-        assert leak not in text, leak
