@@ -305,6 +305,24 @@ def test_structured_answer_is_saved_and_follow_up_uses_project_history():
     assert "Who were you talking to?" in calls[0]["user"]
 
 
+@pytest.mark.parametrize(("utterance", "reply"), [
+    ("I want to try my opening again", "Try starting with the decision you want them to make."),
+    ("Chcę jeszcze raz przećwiczyć początek", "Spróbuj zacząć od decyzji, o którą prosisz."),
+])
+def test_a_rehearsal_request_can_interrupt_an_audience_question(utterance, reply):
+    database = FakeDB()
+    database.project_rows.append({
+        "client_id": "ask", "role": "bot", "kind": "text", "body": "Who were you talking to?",
+        "metadata": {"arc_id": ARC, "project_chat": True, "next_slot": "audience"},
+        "client_created_at": "2026-11-18T10:05:00Z",
+    })
+    with patch("services.llm.chat_complete", return_value=_config_result(reply)):
+        response, _ = project_chat.answer(database, USER, ARC, utterance, take_session_id=TAKE)
+    assert not database.takes.saved
+    assert not response["row_metadata"].get("captured_slots")
+    assert response["answer"] == reply
+
+
 def test_a_review_question_uses_the_exact_old_moment_without_capturing_setup():
     database = FakeDB()
     database.project_rows.append({

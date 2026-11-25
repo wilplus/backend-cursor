@@ -11,6 +11,9 @@ from __future__ import annotations
 import re
 from typing import Any, Optional
 
+from services.content_language import resolve_content_language
+from services.speaking_coach_scope import normalize
+
 
 NEW_PROJECT_REPLY = (
     "This looks like a new presentation. Let’s create a new project so its "
@@ -36,6 +39,24 @@ _NEW_PRESENTATION = re.compile(
     r"\bsubstantially different\b",
     re.IGNORECASE,
 )
+_NEW_PRESENTATION_PL = re.compile(
+    r"\b(?:now\w*|inn\w*|kolejn\w*) (?:prezentacj\w*|wystapieni\w*)\b"
+    r"|\b(?:prezentacj\w*|wystapieni\w*) (?:od nowa|od zera)\b"
+)
+_PREPARE = re.compile(
+    r"^(?:oh |ok |okay )?(?:i (?:need|want|have) to|i d like to|let s) "
+    r"(?:prepare|practi[cs]e|rehearse|work on) (?:for )?(?:(?:a|an|the|my) )?"
+    r"(?:presentation|talk|pitch|speech)\b"
+    r"|^(?:ok |dobra )?(?:chce|musze|potrzebuje|chcialbym|chcialabym) "
+    r"(?:(?:sie )?(?:przygotowac|przecwiczyc|pocwiczyc) (?:sie )?(?:do |nad )?"
+    r"|popracowac nad )(?:(?:moja|mojej|ta|tej) )?"
+    r"(?:prezentacj\w*|wystapieni\w*|prezk\w*)\b"
+)
+_DECK_MUTATION_PL = re.compile(
+    r"\b(?:przeslac|zalaczyc|wgrac|dodac|podmienic|zmienic|zaktualizowac|"
+    r"przeslal\w*|zalaczyl\w*|wgral\w*|dodal\w*|zmienil\w*|zaktualizowal\w*)\b"
+    r".{0,36}\b(?:slajd\w*|pdf|prezentacj\w*)\b"
+)
 _WORDING_ONLY = re.compile(
     r"\b(?:small|minor|tiny|wording|copy|text)\b.{0,28}\b(?:change|edit|update|fix|rewrite)\b|"
     r"\b(?:change|edit|update|fix|rewrite)\b.{0,28}\b(?:wording|copy|text|sentence)\b",
@@ -55,10 +76,16 @@ def _has_current_project(context: Any) -> bool:
     return bool(isinstance(context, dict) and context.get("has_current_project"))
 
 
-def _new_project() -> dict:
+def _new_project(language: str, has_project: bool) -> dict:
+    if language == "pl":
+        answer = "Możesz zacząć od nowego projektu i dodać slajdy, jeśli je masz."
+    else:
+        answer = NEW_PROJECT_REPLY if has_project else (
+            "Let’s set up a project for your talk. You can add slides if you have them."
+        )
     return {
         "intent": "new_presentation",
-        "answer": NEW_PROJECT_REPLY,
+        "answer": answer,
         "suggested_actions": ["create_new_project"],
     }
 
@@ -77,10 +104,12 @@ def handle_presentation_change(
     if not isinstance(message, str) or not message.strip():
         return None
     text = message.strip()
+    plain = normalize(text)
+    language = resolve_content_language(typed_message=text)
     has_project = _has_current_project(context)
 
-    if _NEW_PRESENTATION.search(text):
-        return _new_project()
+    if _NEW_PRESENTATION.search(text) or _NEW_PRESENTATION_PL.search(plain):
+        return _new_project(language, has_project)
 
     if _WORDING_ONLY.search(text) and has_project:
         return {
@@ -89,14 +118,14 @@ def handle_presentation_change(
             "suggested_actions": ["edit_current_slide"],
         }
 
-    if not _DECK_MUTATION.search(text):
-        return None
-
+    if not (_DECK_MUTATION.search(text) or _DECK_MUTATION_PL.search(plain)):
+        return _new_project(language, has_project) if _PREPARE.search(plain) else None
     if not has_project:
-        return _new_project()
+        return _new_project(language, has_project)
 
     return {
         "intent": "update_slides",
-        "answer": UPDATE_SLIDES_REPLY,
+        "answer": ("Możesz zaktualizować slajdy w tym projekcie. Użyjesz ich w kolejnym nagraniu."
+                   if language == "pl" else UPDATE_SLIDES_REPLY),
         "suggested_actions": ["update_slides"],
     }

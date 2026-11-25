@@ -581,7 +581,39 @@ def test_selected_take_supplies_passage_and_delivery_without_shared_feedback():
     assert reads == [[selected["id"]]]
     assert result is not None
     assert "/chat/take/" not in result[0]["answer"]
-    assert not result[0].get("row_metadata")
+    assert result[0]["row_metadata"] == {
+        "speaking_recording_focus": {
+            "arc_id": "campus", "take_session_id": selected["id"], "snippet_id": "selected-clip",
+        },
+    }
+    from services import chat_practice, chat_query
+
+    _, saved = chat_query._chat_turn_rows(
+        db, USER, "Look at my delivery", result[0]["answer"],
+        row_metadata=result[0]["row_metadata"], place="speaking",
+    )
+    assert saved[1]["metadata"][chat_practice.SIGNATURE]
+    opening = {**snippets([selected["id"]])[selected["id"]][0], "id": "other-clip",
+               "transcript": "ANOTHER CLIP FROM THE SAME TAKE."}
+    saved_rows = [saved[1], saved[0]]
+    with (
+        patch.object(db, "get_snippets_by_sessions", return_value={selected["id"]: [
+            opening, snippets([selected["id"]])[selected["id"]][0],
+        ]}, create=True),
+        patch.object(db, "get_lounge_messages_page", return_value=saved_rows),
+        patch("services.llm.embed", return_value=None),
+        patch("services.llm.chat_complete") as model,
+    ):
+        def continue_same_clip(**kwargs):
+            assert words in kwargs["system"]
+            assert "ANOTHER CLIP" not in kwargs["system"]
+            assert "LATER TAKE WORDS" not in kwargs["system"]
+            return _result("Try the same line with a pause before the request.")
+
+        model.side_effect = continue_same_clip
+        follow_up = speaking_coach.answer(db, USER, "Can we practise it?", app_config=_config())
+    assert follow_up is not None
+    assert follow_up[0]["row_metadata"][chat_practice.RECORDING_FOCUS]["snippet_id"] == "selected-clip"
 
 
 def test_comparison_grounds_the_same_slide_without_feedback():

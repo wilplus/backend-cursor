@@ -384,7 +384,7 @@
     "project_chat.prompt_builder": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "fddca884dd951cec4bccbcc20bd7b616fe387fd68faff9ed0510888b00af18df"
+      "sha256": "ffd3158682f6fa02d010b1d237acb9d3f4c54d83e66a059617e4efa684baa3d5"
     },
     "project_chat.reflection": {
       "kind": "static",
@@ -395,6 +395,11 @@
       "kind": "source_ref",
       "module": "pending",
       "sha256": "cf901c7d0d2e6a301989edf87611fd1f4cd2ab3450476d603d360f651000a263"
+    },
+    "project_chat.setup_answer": {
+      "kind": "source_ref",
+      "module": "pending",
+      "sha256": "46c154d867a2731058b3d12def43fbfdfb2dabd5531a9207f8858ecf608c5259"
     },
     "project_chat.system": {
       "kind": "source_ref",

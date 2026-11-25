@@ -174,6 +174,7 @@ class ContextPacket:
     scope_status: str = "general"
     practice_catalogue: tuple[dict, ...] = ()
     comparison_takes: tuple[str, ...] = ()
+    exact_snippet: str = ""
 
     def debug(self, *, selected_evidence: Optional[int] = None) -> dict[str, Any]:
         return {
@@ -698,7 +699,7 @@ def _practice_catalogue(database: Any, meter: _ReadMeter, enabled: bool) -> tupl
 
 
 def _delivery_evidence(database: Any, sessions: list[dict], labels: dict[str, str],
-                       meter: _ReadMeter) -> list[Evidence]:
+                       meter: _ReadMeter, *, include_words_only: bool = False) -> list[Evidence]:
     reader = getattr(database, "get_snippets_by_sessions", None)
     if not callable(reader):
         reader = getattr(_repo(database), "get_snippets_by_sessions", None)
@@ -712,7 +713,7 @@ def _delivery_evidence(database: Any, sessions: list[dict], labels: dict[str, st
         item
         for take in sessions
         for item in delivery_evidence(labels[str(take["arc_id"])], take,
-                                      rows.get(str(take["id"])) or [])
+                                      rows.get(str(take["id"])) or [], include_words_only=include_words_only)
     ]
 
 
@@ -745,6 +746,14 @@ def _packet_scope_status(scope: TalkScope, take_count: int) -> str:
     return "resolved" if take_count else "unavailable"
 
 
+def _focus_evidence(evidence: list[Evidence], scope: TalkScope, take_count: int) -> tuple[list[Evidence], str]:
+    if not scope.snippet_id:
+        return evidence, _packet_scope_status(scope, take_count)
+    exact = [item for item in evidence if any(source.snippet_id == scope.snippet_id for source in item.sources)]
+    setup = [item for item in evidence if item.source_type == "project_context"]
+    return exact + setup, "resolved" if exact else "unavailable"
+
+
 def _uncached_packet(
     database: Any, user_id: str, profile: Optional[dict], index_rows: list[dict],
     fingerprint: str, meter: _ReadMeter, app_config: Any, started: float, now: float,
@@ -767,17 +776,19 @@ def _uncached_packet(
         lambda: _coach_evidence(database, user_id, takes, labels, meter),
         lambda: _ideal_evidence(database, user_id, document_takes, labels, meter),
         lambda: _practice_catalogue(database, meter, practice and bool(takes)),
-        lambda: _delivery_evidence(database, takes, labels, meter),
+        lambda: _delivery_evidence(database, takes, labels, meter, include_words_only=bool(scope.snippet_id)),
     )
     evidence = cues + _assembled_evidence(profile, labels, by_arc, setups, scope, ideals, coach)
+    evidence, status = _focus_evidence(evidence, scope, len(takes))
     packet = ContextPacket(
         version=CONTEXT_VERSION, evidence=tuple(evidence),
         sparse=len(evidence) < 3 or len(takes) < 2,
         project_count=len(arcs), take_count=len(takes), source_fingerprint=fingerprint,
         db_reads=meter.reads, budget_exceeded=meter.budget_exceeded, cache_hit=False,
         retrieval_ms=int((time.perf_counter() - started) * 1000),
-        scope_status=_packet_scope_status(scope, len(takes)), practice_catalogue=catalogue,
+        scope_status=status, practice_catalogue=catalogue,
         comparison_takes=tuple(str(row["id"]) for row in takes) if scope.recent_pair else (),
+        exact_snippet=scope.snippet_id,
     )
     # A cache hit rechecks every Take used for its setup, transcript, or document.
     source_takes = {str(take["id"]): take for take in [
@@ -824,7 +835,12 @@ def _context_for_turn(
     )
     private_memory = _clip(memory.get("note"), 800) if isinstance(memory, dict) else ""
     index_rows = [row for row in (index or []) if _done_take(row)]
-    scope, search = resolve_scope(index_rows, question, history)
+    from services.chat_practice import recent_recording_focus, speaking_rows
+    from services.speaking_coach_scope import continues_passage
+
+    focus = meter.call("speaking_recording_focus", lambda: recent_recording_focus(speaking_rows(database, uid), uid)) \
+        if continues_passage(question) else None
+    scope, search = resolve_scope(index_rows, question, history, focus=focus)
     practice = bool(scope.arc_id and wants_practice(search))
     fingerprint = hashlib.sha256(
         (_fingerprint(index_rows, profile if isinstance(profile, dict) else None) + private_memory).encode()
@@ -957,10 +973,14 @@ def _scope_question(status: str, language: str) -> str:
 
 
 def _chat_pace_offer(database: Any, user: Any, question: str, language: str,
-                     selected: tuple[Evidence, ...]) -> Optional[dict]:
+                     selected: tuple[Evidence, ...], *, exact_snippet: str = "") -> Optional[dict]:
     from services import chat_practice
 
-    if not user or not chat_practice.asks_to_correct(question):
+    from services.speaking_coach_scope import continues_passage
+
+    if not user or not (chat_practice.asks_to_correct(question) or (
+        exact_snippet and continues_passage(question, rehearsal_only=True)
+    )):
         return None
     takes = {(source.arc_id, source.take_id) for evidence in selected for source in evidence.sources
              if source.arc_id and source.take_id}
@@ -968,12 +988,25 @@ def _chat_pace_offer(database: Any, user: Any, question: str, language: str,
         return None
     arc, take = next(iter(takes))
     offer = chat_practice.published_pace(
-        database, str(user), arc, take, language, completed_rows=chat_practice.speaking_rows(database, str(user)),
+        database, str(user), arc, take, language, snippet=exact_snippet or None,
+        completed_rows=chat_practice.speaking_rows(database, str(user)),
     )
     if offer:
         text, metadata = offer
         return {"answer": text, "row_metadata": metadata}
     return None
+
+
+def _recording_focus(parsed: dict, evidence: tuple[Evidence, ...], exact_snippet: str) -> dict | None:
+    references = parsed.get("evidence")
+    sources = {(source.arc_id, source.take_id, source.snippet_id)
+               for index, item in enumerate(evidence) for source in item.sources
+               if source.snippet_id and (source.snippet_id == exact_snippet
+                   or isinstance(references, list) and f"E{index}" in references)}
+    if len(sources) != 1:
+        return None
+    arc, take, snippet = next(iter(sources))
+    return {"arc_id": arc, "take_session_id": take, "snippet_id": snippet}
 
 
 
@@ -1031,7 +1064,8 @@ def answer(
         scoped=scoped, user_id=str(user_id) if user_id else None,
         comparison_takes=packet.comparison_takes,
     )
-    if pace := _chat_pace_offer(database, user_id, search_question, target_language, selected):
+    if pace := _chat_pace_offer(database, user_id, search_question, target_language, selected,
+                                exact_snippet=packet.exact_snippet):
         return pace, packet.debug(selected_evidence=len(selected))
     context_block = _render_context(packet, selected)
     from services import speaker_memory
@@ -1112,8 +1146,10 @@ def answer(
         route, packet.cache_hit, packet.db_reads, len(selected), call_count,
         debug["model_duration_ms"], retrieval_ms,
     )
-    return (
-        _practisable_payload(clean, parsed, question=question, language=target_language, selected=selected),
-        debug,
-    )
+    reply = _practisable_payload(clean, parsed, question=question, language=target_language, selected=selected)
+    if scoped and (focus := _recording_focus(parsed, selected, packet.exact_snippet)):
+        from services.chat_practice import RECORDING_FOCUS
+
+        reply.setdefault("row_metadata", {})[RECORDING_FOCUS] = focus
+    return reply, debug
 

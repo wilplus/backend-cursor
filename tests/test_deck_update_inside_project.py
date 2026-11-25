@@ -193,6 +193,17 @@ class DeckUpdateInsideTheProjectTests(unittest.TestCase):
                     self.assertEqual(reply["suggested_actions"],
                                      ["update_slides"])
 
+    def test_presentation_preparation_offers_the_existing_setup_action_in_both_languages(self):
+        from services.presentation_change_intent import handle_presentation_change
+
+        for question in ("I need to prepare for a presentation", "Muszę przygotować się do prezentacji",
+                         "Chcę przygotować się do nowej prezentacji"):
+            with self.subTest(question=question):
+                self.assertEqual(handle_presentation_change(question)["suggested_actions"], ["create_new_project"])
+        self.assertEqual(handle_presentation_change("Chcę przesłać slajdy", {"has_current_project": True})
+                         ["suggested_actions"], ["update_slides"])
+        self.assertIsNone(handle_presentation_change("How can I start a presentation with a good opening?"))
+
 
 if __name__ == "__main__":
     unittest.main()
