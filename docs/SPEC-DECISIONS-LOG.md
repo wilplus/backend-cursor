@@ -17921,3 +17921,9 @@ The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/b
 Each newly recorded attempt is heard with its own words, delivery evidence and conversation context. The coach answers as a public-speaking coach and gives a concrete exercise with each correction. User mic messages keep playback. A coach reply includes source playback when it explains a specific audible moment or the speaker asks to hear it. Wording corrections keep their exercise and proposal together.
 
 The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N695 · Calibrate speaking examples in AI Training** (founder, Codex calibration chat, 25 November 2026, “speaking model calibration” and “testing and trianing my model in the app in the chat builder”). Adds a founder-only tool alongside the live Speaking Coach.
+
+In My Chat → AI → Training, the founder chooses an owned Take and exact moment, records a human observation before seeing measured cues, and can chat, assign values and save the calibration to that moment. Use the app’s Whisper for a fresh retry and its existing ElevenLabs voice for a checked spoken example. Use GPT‑6.2 in this chat alone. Human calibration, measured cues and exercise outcomes remain separate. The live picker and shared learning require their own approved changes.
+
+The rules: [AI voice in practice](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md).
