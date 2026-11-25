@@ -253,6 +253,11 @@ _RECORD_AGAIN = re.compile(
     r"nagrać (?:jeszcze raz|ponownie|kolejn\w* (?:take|nagranie))[?!. ]*$",
     re.IGNORECASE,
 )
+_NEXT_TAKE_PRACTICE = re.compile(
+    r"\b(?:practi[cs]\w*|rehears\w*|przećwicz\w*|poćwicz\w*)\b[^?!.]{0,70}\b"
+    r"(?:(?:next|another) (?:take|recording)|(?:kolejn|następn)\w* nagrani\w*)\b",
+    re.IGNORECASE,
+)
 _ASKS_ABOUT_AUDIENCE = re.compile(r"\b(?:audience|listeners?|odbiorc\w*|słuchacz\w*)\b", re.IGNORECASE)
 _DELIVERY_REFLECTION = re.compile(
     r"\b(?:how (?:did|does) [^?.!]{1,65} sound|jak (?:wybrzm\w*|brzm\w*))\b",
@@ -2135,12 +2140,20 @@ def _attach_intervention(metadata: dict, parsed: dict) -> None:
 
 def _live_feedback_metadata(context: ProjectChatContext, question: str, parsed: dict, reply: dict) -> dict:
     metadata: dict = {"live_take_feedback": True}
-    if context.ideal_text and parsed.get("next_review_step") == "ideal":
+    ideal_offered = bool(context.ideal_text and parsed.get("next_review_step") == "ideal")
+    next_take_requested = bool(ideal_offered and _SHOW_IDEAL.search(question) and _NEXT_TAKE_PRACTICE.search(question))
+    if ideal_offered:
         after = _text(parsed.get("after_ideal_text"), 420)
         if after and after.count("?") <= 1 and not (_FORBIDDEN_OUTPUT.search(after) or _READINESS_SCORE.search(after)):
             metadata["after_ideal_text"] = after
+    if next_take_requested:
+        after = str(metadata.get("after_ideal_text") or "")
+        if "?" not in after:
+            language = resolve_content_language(typed_message=question)
+            invitation = "Chcesz nagrać kolejną próbę?" if language == "pl" else "Ready to record another Take?"
+            metadata["after_ideal_text"] = f"{after} {invitation}".strip()
     output_seen = _dict(reply.get("review_focus")).get("step") == "ideal"
-    asked_for_recording = output_seen and bool(_RECORD_AGAIN.search(question))
+    asked_for_recording = next_take_requested or (output_seen and bool(_RECORD_AGAIN.search(question)))
     if asked_for_recording or (parsed.get("offer_next_take") is True and (output_seen or metadata.get("after_ideal_text"))):
         metadata["suggested_action"] = "record_again"
     return metadata

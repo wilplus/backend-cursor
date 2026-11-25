@@ -392,6 +392,15 @@ def test_live_feedback_pairs_an_improvement_with_an_intervention_and_offers_the_
     assert reply["row_metadata"]["after_ideal_text"] == result.parsed["after_ideal_text"]
     assert reply["suggested_action"] == "record_again"
 
+    result.parsed.update(offer_next_take=False, after_ideal_text="Przećwicz pauzę po prośbie.")
+    with patch("services.llm.chat_complete", return_value=result):
+        reply, _ = project_chat.answer(
+            database, USER, ARC, "Pokaż mi Ideal Text i powiedz, co przećwiczyć w kolejnym nagraniu.",
+            take_session_id=TAKE, review_focus={"step": "practise", "snippet_id": "s2"}, live_take_feedback=True,
+        )
+    assert reply["row_metadata"]["after_ideal_text"] == "Przećwicz pauzę po prośbie. Chcesz nagrać kolejną próbę?"
+    assert reply["suggested_action"] == "record_again"
+
 
 def test_sparse_evidence_is_acknowledged_without_inventing_feedback():
     database = FakeDB()

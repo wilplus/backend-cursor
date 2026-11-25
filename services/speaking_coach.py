@@ -87,6 +87,7 @@ _PRACTICE_REQUEST = re.compile(r"\b(?:practi[cs]\w*|try|exercise\w*|work on|impr
 _DELIVERY_QUESTION = re.compile(
     r"\b(?:did i sound|how (?:did|do) i sound|brzmiał[ae]m|jak brzm\w*)\b", re.IGNORECASE,
 )
+_SPEAKING_REFLECTION = re.compile(r"\b(?:how i (?:talk|speak) about|jak (?:mówię|opowiadam) o)\b", re.IGNORECASE)
 
 _RESPONSE_SCHEMA: dict[str, Any] = {
     "name": "speaking_coach_turn",
@@ -1063,6 +1064,16 @@ def _finish_catalogue_practice(answer: str, question: str, language: str, practi
     return f"{answer} {follow_up}"
 
 
+def _finish_reflection(answer: str, question: str, language: str) -> str:
+    if "?" in answer or not _SPEAKING_REFLECTION.search(question):
+        return answer
+    if not re.search(r"\b(?:inner voice|wewnętrz\w* głos\w*)\b", answer, re.IGNORECASE):
+        return answer
+    follow_up = ("Skąd bierzesz siłę, żeby nie dać się temu głosowi?"
+                 if language == "pl" else "What gives you the strength to push back on that voice?")
+    return f"{answer} {follow_up}"
+
+
 def answer(
     database: Any, user_id: Any, question: str, *,
     history: Optional[list[dict]] = None, app_config: Any = None,
@@ -1172,6 +1183,7 @@ def answer(
         route, packet.cache_hit, packet.db_reads, len(selected), call_count,
         debug["model_duration_ms"], retrieval_ms,
     )
+    clean = _finish_reflection(clean, question, target_language)
     clean = _finish_catalogue_practice(clean, question, target_language, practice_prompt)
     reply = _practisable_payload(clean, parsed, question=question, language=target_language, selected=selected)
     if scoped and (focus := _recording_focus(parsed, selected, packet.exact_snippet)):
