@@ -40,7 +40,14 @@ def save(database, user_id: str, take_id: str, body: Any) -> tuple[dict, int]:
         return {"code": "INVALID_INPUT"}, 400
     revision = body.get("revision")
     patch = _draft(body.get("document"))
-    if type(revision) is not int or not 0 <= revision < 2147483647 or patch is None:
+    if patch is None:
+        return {"code": "INVALID_INPUT"}, 400
+    return save_patch(database, user_id, take_id, revision, patch)
+
+
+def save_patch(database, user_id: str, take_id: str, revision: Any, patch: dict) -> tuple[dict, int]:
+    """Merge an already validated patch through the shared revision guard."""
+    if type(revision) is not int or not 0 <= revision < 2147483647:
         return {"code": "INVALID_INPUT"}, 400
     current = read(database, user_id, take_id)
     document = {**current["document"], **patch}
