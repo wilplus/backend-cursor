@@ -5,9 +5,9 @@ STORY    As a coach who teaches models, I want the queue's tasks shown in the
          step one; N643 item 4).
 OUTCOME
   O1  GET /v2/models/coach-tasks lists "Moments to answer", "Do you hear
-      it?", "Pick the most confident", "Pick the moment for feedback" and
-      "Which sounds surer", each with this coach's waiting count as the
-      panel counts it and where it opens; ``coming`` is the coming list.
+      it?" and "Pick the moment for feedback", each with this coach's
+      waiting count as the panel counts it and where it opens; nothing is
+      listed as coming (N702).
   O2  Reading it fills no line and answers nothing; a line that cannot be
       read waits 0.
   O3  Someone who is not a coach, or has neither ring, gets empty lists,
@@ -56,9 +56,7 @@ class CoachTasksTest(unittest.TestCase):
                   patch("services.coach_moments_queue.walk_for_coach",
                         lambda *_a, **_k: [{"waiting": 30}, {"waiting": 7}, {"waiting": 0}]),
                   patch("services.error_presence_audit.queue", lambda *_a, **_k: _items(4)),
-                  patch("services.coach_block_pick.queue", lambda *_a, **_k: _items(2)),
                   patch("services.v4_coach_sheets.pick_queue", lambda *_a, **_k: _items(3)),
-                  patch("services.v4_coach_sheets.surer_queue", lambda *_a, **_k: _items(0)),
                   patch("services.error_presence_audit.sample_for_coach", side_effect=never),
                   patch("services.v4_coach_sheets.fill_pick_sheets", side_effect=never)):
             p.start()
@@ -74,25 +72,22 @@ class CoachTasksTest(unittest.TestCase):
         self.assertEqual([(t["id"], t["kind"], t["title"], t["waiting"], t["open"]) for t in got["tasks"]], [
             ("moments", "moments", "Moments to answer", 37, {"at": "coach_queue"}),
             ("hear_it", "hear_it", "Do you hear it?", 4, {"at": "screen", "screen": "error_audit"}),
-            ("block_pick", "block_pick", "Pick the most confident", 2, {"at": "screen", "screen": "block_pick"}),
             ("moment_pick", "moment_pick", "Pick the moment for feedback", 3,
-             {"at": "screen", "screen": "v4_moment_pick"}),
-            ("surer", "surer", "Which sounds surer", 0, {"at": "screen", "screen": "v4_surer"})])
+             {"at": "screen", "screen": "v4_moment_pick"})])
         self.assertTrue(all(t["line"] == "" for t in got["tasks"]))
-        self.assertEqual([(c["kind"], c["wanted"]) for c in got["coming"]],
-                         [("images", False), ("video", True), ("recordings", False)])
+        self.assertEqual(got["coming"], [])
 
     def test_reading_fills_nothing_and_a_failed_line_waits_nothing(self):
-        with patch("services.coach_block_pick.queue", side_effect=RuntimeError("down")), \
+        with patch("services.v4_coach_sheets.pick_queue", side_effect=RuntimeError("down")), \
                 self.assertLogs("services.model_coach_tasks", "WARNING"):
             got = self._read()
-        self.assertEqual({t["id"]: t["waiting"] for t in got["tasks"]}["block_pick"], 0)
+        self.assertEqual({t["id"]: t["waiting"] for t in got["tasks"]}["moment_pick"], 0)
 
     def test_others_get_empty_lists(self):
         self.coach = False
         got = self._read()
         self.assertEqual(got["tasks"], [])
-        self.assertEqual(len(got["coming"]), 3)
+        self.assertEqual(got["coming"], [])
         self.rings = set()
         self.coach = True
         self.assertEqual(self._read(), {"tasks": [], "coming": []})
