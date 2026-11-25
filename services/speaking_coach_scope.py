@@ -26,6 +26,22 @@ _COMPARE = re.compile(
     r"porown\w*|zmienil\w*|poprawil\w*|lepiej|jasniej)\b|\blast time\b"
 )
 _FOLLOW_UP = re.compile(r"^(?:and|what about|how about|why|what else|tell me more|a co|dlaczego)\b")
+_PASSAGE_CONTINUATION = re.compile(
+    r"\b(?:practi[cs]e|rehearse|repeat|try|play|fix|improve|rewrite|rephrase) "
+    r"(?:(?:it|this|that)(?: (?:part|passage|clip|fragment|line|one))?"
+    r"|the same (?:part|passage|clip|fragment|line))\b"
+    r"|\b(?:przecwiczyc|powtorzyc|poprawic|odtworzyc|przeredagowac|sprobowac) "
+    r"(?:to|tego|ten fragment|tego fragmentu|ten sam fragment)\b"
+    r"|\bjak (?:to|go) (?:przecwiczyc|powtorzyc|poprawic|odtworzyc)\b"
+)
+_REHEARSE_AGAIN = re.compile(
+    r"^(?:(?:can|could|shall) (?:i|we|you) |(?:i (?:want|need) to|let s) )?"
+    r"(?:practi[cs]e|rehearse|repeat|try) "
+    r"(?:(?:it|this|that)(?: (?:part|passage|clip|fragment|line|one))?|the same (?:part|passage|clip|fragment|line))"
+    r"(?: again| now)?$"
+    r"|^(?:(?:czy )?(?:mozemy|moge)|chce) (?:przecwiczyc|powtorzyc|sprobowac) "
+    r"(?:to|tego|ten fragment|tego fragmentu|ten sam fragment)(?: jeszcze raz| ponownie)?$"
+)
 _TAKE_NUMBER = re.compile(
     r"\b(?:takes?|recordings?|prob[aye]|probie|nagrani[aeu]) (?:number |nr )?(\d{1,3})"
     r"(?: (?:and|to|with|i|vs|versus|oraz) (\d{1,3}))?\b"
@@ -33,6 +49,11 @@ _TAKE_NUMBER = re.compile(
 _SLIDE_NUMBER = re.compile(r"\b(?:slide|slajd\w*) (?:number |nr )?(\d{1,3})\b")
 _OPENING = re.compile(r"\b(?:opening|intro|introduction|beginning|poczat\w*|wstep\w*)\b")
 _ENDING = re.compile(r"\b(?:ending|closing|conclusion|at the end|call to action|zakoncz\w*|koncow\w*|na (?:samym )?koncu)\b")
+_REFRAME = re.compile(
+    r"\b(?:reframe|reapprais\w*|look at (?:it|this|that) differently|"
+    r"spojrzec (?:na (?:to|ten stres) )?inaczej|(?:inaczej spojrzec|przeformulowac obaw\w*))\b"
+)
+_WORRY = re.compile(r"\b(?:worr\w*|nervous|anxious|afraid|fear\w*|stres\w*|boje sie|obaw\w*|denerwuj\w*)\b")
 
 
 def normalize(text: str) -> str:
@@ -49,6 +70,18 @@ class TalkScope:
     latest: bool = False
     compare: bool = False
     recent_pair: bool = False
+    take_id: str = ""
+    snippet_id: str = ""
+
+
+def continues_passage(question: str, *, rehearsal_only: bool = False) -> bool:
+    text = normalize(question)
+    return bool(_REHEARSE_AGAIN.fullmatch(text) if rehearsal_only else _PASSAGE_CONTINUATION.search(text))
+
+
+def asks_to_reframe_worry(question: str) -> bool:
+    text = normalize(question)
+    return bool(_REFRAME.search(text) and _WORRY.search(text))
 
 
 def requested_passage(question: str) -> tuple[int | None, str]:
@@ -104,7 +137,28 @@ def _request_for(arc: str, text: str) -> TalkScope:
     return TalkScope(True, arc, numbers[:2], first, latest, compare or recent_pair, recent_pair)
 
 
-def resolve_scope(rows: list[dict], question: str, history: list[dict]) -> tuple[TalkScope, str]:
+def _saved_scope(focus: dict | None, question: str, text: str) -> TalkScope | None:
+    if not focus or not continues_passage(question) or requested_passage(question) != (None, ""):
+        return None
+    request = _request_for("", text)
+    if request.take_numbers or request.first or request.compare:
+        return None
+    return TalkScope(requested=True, arc_id=focus["arc_id"], take_id=focus["take_session_id"],
+                     snippet_id=focus["snippet_id"])
+
+
+def _prior_scope(arc: str, text: str, prior: str, prior_text: str, question: str,
+                 follow_up: bool) -> tuple[TalkScope, str]:
+    scope = _request_for(arc, text)
+    if not (scope.take_numbers or scope.first or scope.latest):
+        previous = _request_for(arc, prior_text)
+        scope = replace(scope, take_numbers=previous.take_numbers, first=previous.first,
+                        latest=previous.latest, compare=previous.compare, recent_pair=previous.recent_pair)
+    return scope, f"{prior} {question}" if follow_up else question
+
+
+def resolve_scope(rows: list[dict], question: str, history: list[dict],
+                  *, focus: dict | None = None) -> tuple[TalkScope, str]:
     """Use explicit names, the newest Take when requested, or a clear follow-up."""
     text = normalize(question)
     projects = _topics(rows)
@@ -122,46 +176,51 @@ def resolve_scope(rows: list[dict], question: str, history: list[dict]) -> tuple
         return _request_for("", text), question
     if _ACROSS_PROJECTS.search(text):
         return TalkScope(), question
+    if asks_to_reframe_worry(question) and not (_TAKE_NUMBER.search(text) or _LATEST.search(text) or _FIRST.search(text)):
+        return TalkScope(), question
 
     talk = bool(_TALK.search(text) or _SLIDE_NUMBER.search(text))
-    if not talk and not _FOLLOW_UP.search(text):
+    continuation = continues_passage(question)
+    follow_up = continuation or bool(_FOLLOW_UP.search(text))
+    if not talk and not follow_up:
         return TalkScope(), question
     if talk and _LATEST.search(text):
         latest = max(rows, key=lambda row: str(row.get("created_at") or ""), default={})
         return _request_for(str(latest.get("arc_id") or ""), text), question
+    if saved := _saved_scope(focus, question, text):
+        return saved, question
     prior_names = _named_projects(prior_text, projects)
     if len(prior_names) == 1:
-        arc = next(iter(prior_names))
-        query = f"{prior} {question}" if _FOLLOW_UP.search(text) else question
-        scope = _request_for(arc, text)
-        if not (scope.take_numbers or scope.first or scope.latest):
-            previous = _request_for(arc, prior_text)
-            scope = replace(scope, take_numbers=previous.take_numbers, first=previous.first,
-                            latest=previous.latest, compare=previous.compare, recent_pair=previous.recent_pair)
-        return scope, query
-    if not talk:
+        return _prior_scope(next(iter(prior_names)), text, prior, prior_text, question, follow_up)
+    if not talk and not continuation:
         return TalkScope(), question
     arc = next(iter(projects)) if len(projects) == 1 else ""
     return _request_for(arc, text), question
 
 
-def select_takes(rows: list[dict], scope: TalkScope) -> list[dict]:
-    """Input is newest first and owner/permission checked. No substitute for a missing Take."""
-    if not rows:
-        return []
+def _explicit_takes(rows: list[dict], scope: TalkScope) -> set[str]:
     by_number: dict[int, dict] = {}
     for row in rows:
         number = row.get("take_index")
         if isinstance(number, int):
             by_number.setdefault(number, row)
     if any(number not in by_number for number in scope.take_numbers):
-        return []
+        return set()
     chosen = [by_number[number] for number in scope.take_numbers]
     if scope.first:
         chosen.append(rows[-1])
     if scope.latest or not chosen:
         chosen.append(rows[0])
-    take_ids = {row["id"] for row in chosen}
+    return {row["id"] for row in chosen}
+
+
+def select_takes(rows: list[dict], scope: TalkScope) -> list[dict]:
+    """Input is newest first and owner/permission checked. No substitute for a missing Take."""
+    if not rows:
+        return []
+    if scope.take_id:
+        return [row for row in rows if str(row.get("id")) == scope.take_id][:1]
+    take_ids = _explicit_takes(rows, scope)
     if scope.compare and len(take_ids) == 1:
         primary = next(row for row in rows if row["id"] in take_ids)
         earlier = next((row for row in rows if row["id"] != primary["id"]

@@ -83,6 +83,7 @@ REGISTER = {
     "goal_update.builder": SourceRef("services/goal_update.py", "_classify_goal_update"),
     "speaker_memory.system": SourceRef("services/speaker_memory.py", "_SYSTEM"),
     "project_chat.system": SourceRef("services/project_chat.py", "_SYSTEM"),
+    "project_chat.setup_answer": SourceRef("services/project_chat.py", "_SETUP_ANSWER_RULES"),
     "project_chat.prompt_builder": SourceRef("services/project_chat.py", "_model_turn"),
     "project_chat.chat_attempt": SourceRef("services/chat_voice_reference.py", "_SYSTEM"),
     "project_chat.chat_attempt_response": SourceRef("services/chat_voice_reference.py", "_RESPONSE_SCHEMA"),

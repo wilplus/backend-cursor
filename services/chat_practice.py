@@ -16,6 +16,7 @@ META = "chat_practice"
 REPLY_ID = "chat_practice_reply_id"
 COMPLETED = "chat_practice_completed"
 SIGNATURE = "chat_practice_signature"
+RECORDING_FOCUS = "speaking_recording_focus"
 _SIGNED_FIELDS = (META, COMPLETED, "coach_moment", "place", "arc_id", "take_session_id", "chat")
 _NEXT = re.compile(r"^(?:jak (?:to |go )?poprawic|jak to zrobic|how (?:can i |do i |to )?(?:fix|improve) (?:it|this|that))$")
 _CORRECT = re.compile(
@@ -56,7 +57,11 @@ def main_chat_continuation(database, user: str, turn: str, question: str):
     if row and (row.get("metadata") or {}).get(REPLY_ID):
         if retry := retry_reply(database, user, turn, None, language):
             return retry
-    return repeat_offer(speaking_rows(database, user), user, language) if asks_how(question) else None
+    from services.speaking_coach_scope import continues_passage
+
+    return repeat_offer(speaking_rows(database, user), user, language) if (
+        asks_how(question) or continues_passage(question, rehearsal_only=True)
+    ) else None
 
 
 def speaking_rows(database, user: str) -> list[dict]:
@@ -98,13 +103,16 @@ def _signature(user: str, reply: str, meta: dict) -> str | None:
     secret = Config.SUPABASE_JWT_SECRET or Config.SUPABASE_SERVICE_ROLE_KEY
     if not secret:
         return None
-    payload = json.dumps(["willab-chat-practice-v1", user, reply, {key: meta.get(key) for key in _SIGNED_FIELDS}],
+    fields = {key: meta.get(key) for key in _SIGNED_FIELDS}
+    if RECORDING_FOCUS in meta:  # Keep earlier offers' signatures valid.
+        fields[RECORDING_FOCUS] = meta[RECORDING_FOCUS]
+    payload = json.dumps(["willab-chat-practice-v1", user, reply, fields],
                          sort_keys=True, separators=(",", ":"))
     return hmac.digest(secret.encode(), payload.encode(), "sha256").hex()
 
 
 def sign_bot_metadata(user: str, reply: str, meta: dict) -> None:
-    if (META in meta or COMPLETED in meta) and (signature := _signature(user, reply, meta)):
+    if (META in meta or COMPLETED in meta or RECORDING_FOCUS in meta) and (signature := _signature(user, reply, meta)):
         meta[SIGNATURE] = signature
 
 
@@ -118,6 +126,17 @@ def _signed_bot_metadata(row: dict, user: str) -> dict:
         return {}
     expected = _signature(user, reply, meta)
     return meta if expected and hmac.compare_digest(signature, expected) else {}
+
+
+def recent_recording_focus(rows: Any, user: str) -> dict | None:
+    latest: dict = next((row for row in reversed(rows or ()) if row.get("role") == "bot"
+                   and row.get("kind") == "text" and not row.get("chat_erased")), {})
+    metadata = _signed_bot_metadata(latest, user)
+    focus = metadata.get(RECORDING_FOCUS) or metadata.get("coach_moment")
+    coordinates = ("arc_id", "take_session_id", "snippet_id")
+    if isinstance(focus, dict) and all(isinstance(focus.get(key), str) and focus[key] for key in coordinates):
+        return {key: focus[key] for key in coordinates}
+    return None
 
 
 def authorized_retry(database, user: str, retry: str, arc: str, take: str, snippet: str) -> dict | None:

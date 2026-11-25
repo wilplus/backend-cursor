@@ -54,6 +54,7 @@ _PL_UNACCENTED_WORDS = frozenset({
     "czesc", "hej", "dziekuje", "prosze", "pomoz", "mozemy", "zaczac", "wytlumacz",
 })
 _EN_FIRST_PERSON_QUESTION = re.compile(r"\b(?:do|did|am|can|could|should|would|will) i\b")
+_EN_FIRST_PERSON_INTENT = re.compile(r"^(?:i (?:want|need|would like|have) to|i d like to)\b")
 
 
 def normalize_language(value: Any) -> Optional[str]:
@@ -83,7 +84,7 @@ def detect_typed_language(text: Any) -> Optional[str]:
         return "pl"
     if any(word in _PL_UNACCENTED_WORDS for word in words):
         return "pl"
-    if _EN_FIRST_PERSON_QUESTION.search(lowered):
+    if _EN_FIRST_PERSON_QUESTION.search(lowered) or _EN_FIRST_PERSON_INTENT.match(lowered):
         return "en"
     scores = {
         code: sum(1 for word in words if word in markers)

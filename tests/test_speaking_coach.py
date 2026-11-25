@@ -446,6 +446,25 @@ def _reference(system, phrase):
                 if phrase in line and (match := re.match(r"- \[(E\d+);", line)))
 
 
+@pytest.mark.parametrize(("transcript", "expected"), [
+    ("Modlitwa daje mi oparcie przed rozmową. Jutro poproszę o szczerą opinię.", True),
+    ("Kolega powiedział: „To ważna rozmowa. Modlitwa daje mi oparcie.” Jutro poproszę o szczerą opinię.", False),
+])
+def test_only_the_speakers_own_support_is_highlighted_in_the_reflection(transcript, expected):
+    take = _named_take("Prośba o opinię", "opinion", 1, "2026-01-01", transcript)
+    database = _saved_projects(take)
+
+    def generate(**kwargs):
+        assert ("Speaker's explicitly stated source of support" in kwargs["system"]) is expected
+        return _result("Mówisz o tym, że jutro poprosisz o szczerą opinię.")
+
+    with patch("services.llm.chat_complete", generate), patch("services.llm.embed", return_value=None):
+        assert speaking_coach.answer(
+            database, USER, "Co zauważasz o mnie w nagraniu Prośba o opinię?",
+            app_config=_config(),
+        )
+
+
 def test_named_older_talk_uses_exact_take_and_hybrid_retrieval():
     from services.chat_query import _librarian
 
@@ -581,7 +600,39 @@ def test_selected_take_supplies_passage_and_delivery_without_shared_feedback():
     assert reads == [[selected["id"]]]
     assert result is not None
     assert "/chat/take/" not in result[0]["answer"]
-    assert not result[0].get("row_metadata")
+    assert result[0]["row_metadata"] == {
+        "speaking_recording_focus": {
+            "arc_id": "campus", "take_session_id": selected["id"], "snippet_id": "selected-clip",
+        },
+    }
+    from services import chat_practice, chat_query
+
+    _, saved = chat_query._chat_turn_rows(
+        db, USER, "Look at my delivery", result[0]["answer"],
+        row_metadata=result[0]["row_metadata"], place="speaking",
+    )
+    assert saved[1]["metadata"][chat_practice.SIGNATURE]
+    opening = {**snippets([selected["id"]])[selected["id"]][0], "id": "other-clip",
+               "transcript": "ANOTHER CLIP FROM THE SAME TAKE."}
+    saved_rows = [saved[1], saved[0]]
+    with (
+        patch.object(db, "get_snippets_by_sessions", return_value={selected["id"]: [
+            opening, snippets([selected["id"]])[selected["id"]][0],
+        ]}, create=True),
+        patch.object(db, "get_lounge_messages_page", return_value=saved_rows),
+        patch("services.llm.embed", return_value=None),
+        patch("services.llm.chat_complete") as model,
+    ):
+        def continue_same_clip(**kwargs):
+            assert words in kwargs["system"]
+            assert "ANOTHER CLIP" not in kwargs["system"]
+            assert "LATER TAKE WORDS" not in kwargs["system"]
+            return _result("Try the same line with a pause before the request.")
+
+        model.side_effect = continue_same_clip
+        follow_up = speaking_coach.answer(db, USER, "Can we practise it?", app_config=_config())
+    assert follow_up is not None
+    assert follow_up[0]["row_metadata"][chat_practice.RECORDING_FOCUS]["snippet_id"] == "selected-clip"
 
 
 def test_comparison_grounds_the_same_slide_without_feedback():
@@ -661,6 +712,7 @@ def test_missing_feedback_uses_one_relevant_library_exercise():
             db, USER, "What exercise can I try for rushing in Campus Pitch?", app_config=_config(),
         )
     assert result is not None and "Pause after your request." in result[0]["answer"]
+    assert "When do you tend to speed up" in result[0]["answer"]
 
 
 

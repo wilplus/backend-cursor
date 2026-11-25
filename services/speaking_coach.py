@@ -26,7 +26,14 @@ from dataclasses import dataclass, replace
 from typing import Any, Callable, Optional
 
 from services import coach_wording
-from services.prompts.coaching_evidence import DELIVERY_RULES, REFLECTION_RULES, WORDS_ONLY_RULES
+from services.prompts.coaching_evidence import (
+    DELIVERY_RULES,
+    REFLECTION_RULES,
+    REFRAME_RULES,
+    WORDS_ONLY_RULES,
+    stated_support,
+    support_evidence,
+)
 from services.speaking_coach_passages import (
     Evidence, Source, comparison_evidence, delivery_evidence, excerpts, ideal_document_text, practice_tags,
     rank_evidence, transcript_evidence,
@@ -80,6 +87,7 @@ _PRACTICE_REQUEST = re.compile(r"\b(?:practi[cs]\w*|try|exercise\w*|work on|impr
 _DELIVERY_QUESTION = re.compile(
     r"\b(?:did i sound|how (?:did|do) i sound|brzmiał[ae]m|jak brzm\w*)\b", re.IGNORECASE,
 )
+_SPEAKING_REFLECTION = re.compile(r"\b(?:how i (?:talk|speak) about|jak (?:mówię|opowiadam) o)\b", re.IGNORECASE)
 
 _RESPONSE_SCHEMA: dict[str, Any] = {
     "name": "speaking_coach_turn",
@@ -174,6 +182,7 @@ class ContextPacket:
     scope_status: str = "general"
     practice_catalogue: tuple[dict, ...] = ()
     comparison_takes: tuple[str, ...] = ()
+    exact_snippet: str = ""
 
     def debug(self, *, selected_evidence: Optional[int] = None) -> dict[str, Any]:
         return {
@@ -698,7 +707,7 @@ def _practice_catalogue(database: Any, meter: _ReadMeter, enabled: bool) -> tupl
 
 
 def _delivery_evidence(database: Any, sessions: list[dict], labels: dict[str, str],
-                       meter: _ReadMeter) -> list[Evidence]:
+                       meter: _ReadMeter, *, include_words_only: bool = False) -> list[Evidence]:
     reader = getattr(database, "get_snippets_by_sessions", None)
     if not callable(reader):
         reader = getattr(_repo(database), "get_snippets_by_sessions", None)
@@ -712,7 +721,7 @@ def _delivery_evidence(database: Any, sessions: list[dict], labels: dict[str, st
         item
         for take in sessions
         for item in delivery_evidence(labels[str(take["arc_id"])], take,
-                                      rows.get(str(take["id"])) or [])
+                                      rows.get(str(take["id"])) or [], include_words_only=include_words_only)
     ]
 
 
@@ -745,6 +754,14 @@ def _packet_scope_status(scope: TalkScope, take_count: int) -> str:
     return "resolved" if take_count else "unavailable"
 
 
+def _focus_evidence(evidence: list[Evidence], scope: TalkScope, take_count: int) -> tuple[list[Evidence], str]:
+    if not scope.snippet_id:
+        return evidence, _packet_scope_status(scope, take_count)
+    exact = [item for item in evidence if any(source.snippet_id == scope.snippet_id for source in item.sources)]
+    setup = [item for item in evidence if item.source_type == "project_context"]
+    return exact + setup, "resolved" if exact else "unavailable"
+
+
 def _uncached_packet(
     database: Any, user_id: str, profile: Optional[dict], index_rows: list[dict],
     fingerprint: str, meter: _ReadMeter, app_config: Any, started: float, now: float,
@@ -767,17 +784,19 @@ def _uncached_packet(
         lambda: _coach_evidence(database, user_id, takes, labels, meter),
         lambda: _ideal_evidence(database, user_id, document_takes, labels, meter),
         lambda: _practice_catalogue(database, meter, practice and bool(takes)),
-        lambda: _delivery_evidence(database, takes, labels, meter),
+        lambda: _delivery_evidence(database, takes, labels, meter, include_words_only=bool(scope.snippet_id)),
     )
     evidence = cues + _assembled_evidence(profile, labels, by_arc, setups, scope, ideals, coach)
+    evidence, status = _focus_evidence(evidence, scope, len(takes))
     packet = ContextPacket(
         version=CONTEXT_VERSION, evidence=tuple(evidence),
         sparse=len(evidence) < 3 or len(takes) < 2,
         project_count=len(arcs), take_count=len(takes), source_fingerprint=fingerprint,
         db_reads=meter.reads, budget_exceeded=meter.budget_exceeded, cache_hit=False,
         retrieval_ms=int((time.perf_counter() - started) * 1000),
-        scope_status=_packet_scope_status(scope, len(takes)), practice_catalogue=catalogue,
+        scope_status=status, practice_catalogue=catalogue,
         comparison_takes=tuple(str(row["id"]) for row in takes) if scope.recent_pair else (),
+        exact_snippet=scope.snippet_id,
     )
     # A cache hit rechecks every Take used for its setup, transcript, or document.
     source_takes = {str(take["id"]): take for take in [
@@ -824,7 +843,12 @@ def _context_for_turn(
     )
     private_memory = _clip(memory.get("note"), 800) if isinstance(memory, dict) else ""
     index_rows = [row for row in (index or []) if _done_take(row)]
-    scope, search = resolve_scope(index_rows, question, history)
+    from services.chat_practice import recent_recording_focus, speaking_rows
+    from services.speaking_coach_scope import continues_passage
+
+    focus = meter.call("speaking_recording_focus", lambda: recent_recording_focus(speaking_rows(database, uid), uid)) \
+        if continues_passage(question) else None
+    scope, search = resolve_scope(index_rows, question, history, focus=focus)
     practice = bool(scope.arc_id and wants_practice(search))
     fingerprint = hashlib.sha256(
         (_fingerprint(index_rows, profile if isinstance(profile, dict) else None) + private_memory).encode()
@@ -957,10 +981,14 @@ def _scope_question(status: str, language: str) -> str:
 
 
 def _chat_pace_offer(database: Any, user: Any, question: str, language: str,
-                     selected: tuple[Evidence, ...]) -> Optional[dict]:
+                     selected: tuple[Evidence, ...], *, exact_snippet: str = "") -> Optional[dict]:
     from services import chat_practice
 
-    if not user or not chat_practice.asks_to_correct(question):
+    from services.speaking_coach_scope import continues_passage
+
+    if not user or not (chat_practice.asks_to_correct(question) or (
+        exact_snippet and continues_passage(question, rehearsal_only=True)
+    )):
         return None
     takes = {(source.arc_id, source.take_id) for evidence in selected for source in evidence.sources
              if source.arc_id and source.take_id}
@@ -968,12 +996,25 @@ def _chat_pace_offer(database: Any, user: Any, question: str, language: str,
         return None
     arc, take = next(iter(takes))
     offer = chat_practice.published_pace(
-        database, str(user), arc, take, language, completed_rows=chat_practice.speaking_rows(database, str(user)),
+        database, str(user), arc, take, language, snippet=exact_snippet or None,
+        completed_rows=chat_practice.speaking_rows(database, str(user)),
     )
     if offer:
         text, metadata = offer
         return {"answer": text, "row_metadata": metadata}
     return None
+
+
+def _recording_focus(parsed: dict, evidence: tuple[Evidence, ...], exact_snippet: str) -> dict | None:
+    references = parsed.get("evidence")
+    sources = {(source.arc_id, source.take_id, source.snippet_id)
+               for index, item in enumerate(evidence) for source in item.sources
+               if source.snippet_id and (source.snippet_id == exact_snippet
+                   or isinstance(references, list) and f"E{index}" in references)}
+    if len(sources) != 1:
+        return None
+    arc, take, snippet = next(iter(sources))
+    return {"arc_id": arc, "take_session_id": take, "snippet_id": snippet}
 
 
 
@@ -997,6 +1038,40 @@ def _brief_general_turn(route: str, question: str, history: Optional[list[dict]]
     return (route == "general" and not history and len(question.split()) <= 8
             and not re.search(r"\b(?:i|me|my|mine|mój|moja|moje|mnie)\b|\?", question, re.IGNORECASE))
 
+
+
+def _turn_system(packet: ContextPacket, selected: tuple[Evidence, ...], question: str,
+                 practice_prompt: str) -> str:
+    from services import speaker_memory
+    from services.speaking_coach_scope import asks_to_reframe_worry
+
+    preference = speaker_memory.prompt_block(packet.private_memory)
+    if packet.scope_status == "resolved" and preference:
+        preference += "Use the private note for coaching preferences only. The selected evidence supports talk-specific claims."
+    context = _render_context(packet, selected)
+    system = (_SYSTEM + "\n" + coach_wording.WORDING_RULES + "\n\n" + context + "\n" + preference
+              + practice_prompt)
+    transcripts = [item.text for item in selected if item.source_type == "take_transcript" and not item.spoken_text]
+    system += support_evidence(stated_support(question, transcripts))
+    return system + "\n\n" + REFRAME_RULES if asks_to_reframe_worry(question) else system
+
+
+def _finish_catalogue_practice(answer: str, question: str, language: str, practice_prompt: str) -> str:
+    if not practice_prompt or "?" in answer or not wants_practice(question) or "rushing" not in practice_tags(question):
+        return answer
+    follow_up = ("Kiedy najczęściej zdarza Ci się mówić szybciej lub przechodzić od razu do kolejnej myśli?"
+                 if language == "pl" else "When do you tend to speed up or jump straight to your next point?")
+    return f"{answer} {follow_up}"
+
+
+def _finish_reflection(answer: str, question: str, language: str) -> str:
+    if "?" in answer or not _SPEAKING_REFLECTION.search(question):
+        return answer
+    if not re.search(r"\b(?:inner voice|wewnętrz\w* głos\w*)\b", answer, re.IGNORECASE):
+        return answer
+    follow_up = ("Skąd bierzesz siłę, żeby nie dać się temu głosowi?"
+                 if language == "pl" else "What gives you the strength to push back on that voice?")
+    return f"{answer} {follow_up}"
 
 
 def answer(
@@ -1031,15 +1106,11 @@ def answer(
         scoped=scoped, user_id=str(user_id) if user_id else None,
         comparison_takes=packet.comparison_takes,
     )
-    if pace := _chat_pace_offer(database, user_id, search_question, target_language, selected):
+    if pace := _chat_pace_offer(database, user_id, search_question, target_language, selected,
+                                exact_snippet=packet.exact_snippet):
         return pace, packet.debug(selected_evidence=len(selected))
-    context_block = _render_context(packet, selected)
-    from services import speaker_memory
-    preference = speaker_memory.prompt_block(packet.private_memory)
-    if scoped and preference:
-        preference += "Use the private note for coaching preferences only. The selected evidence supports talk-specific claims."
-    system = (_SYSTEM + "\n" + coach_wording.WORDING_RULES + "\n\n" + context_block + "\n" + preference
-              + _practice_prompt(packet, search_question, selected))
+    practice_prompt = _practice_prompt(packet, search_question, selected)
+    system = _turn_system(packet, selected, question, practice_prompt)
     messages = [{"role": "system", "content": system}]
     if not scoped:
         messages.extend(_prompt_history(history))
@@ -1112,8 +1183,12 @@ def answer(
         route, packet.cache_hit, packet.db_reads, len(selected), call_count,
         debug["model_duration_ms"], retrieval_ms,
     )
-    return (
-        _practisable_payload(clean, parsed, question=question, language=target_language, selected=selected),
-        debug,
-    )
+    clean = _finish_reflection(clean, question, target_language)
+    clean = _finish_catalogue_practice(clean, question, target_language, practice_prompt)
+    reply = _practisable_payload(clean, parsed, question=question, language=target_language, selected=selected)
+    if scoped and (focus := _recording_focus(parsed, selected, packet.exact_snippet)):
+        from services.chat_practice import RECORDING_FOCUS
+
+        reply.setdefault("row_metadata", {})[RECORDING_FOCUS] = focus
+    return reply, debug
 

@@ -305,6 +305,24 @@ def test_structured_answer_is_saved_and_follow_up_uses_project_history():
     assert "Who were you talking to?" in calls[0]["user"]
 
 
+@pytest.mark.parametrize(("utterance", "reply"), [
+    ("I want to try my opening again", "Try starting with the decision you want them to make."),
+    ("Chcę jeszcze raz przećwiczyć początek", "Spróbuj zacząć od decyzji, o którą prosisz."),
+])
+def test_a_rehearsal_request_can_interrupt_an_audience_question(utterance, reply):
+    database = FakeDB()
+    database.project_rows.append({
+        "client_id": "ask", "role": "bot", "kind": "text", "body": "Who were you talking to?",
+        "metadata": {"arc_id": ARC, "project_chat": True, "next_slot": "audience"},
+        "client_created_at": "2026-11-18T10:05:00Z",
+    })
+    with patch("services.llm.chat_complete", return_value=_config_result(reply)):
+        response, _ = project_chat.answer(database, USER, ARC, utterance, take_session_id=TAKE)
+    assert not database.takes.saved
+    assert not response["row_metadata"].get("captured_slots")
+    assert response["answer"] == reply
+
+
 def test_a_review_question_uses_the_exact_old_moment_without_capturing_setup():
     database = FakeDB()
     database.project_rows.append({
@@ -372,6 +390,15 @@ def test_live_feedback_pairs_an_improvement_with_an_intervention_and_offers_the_
         )
     assert reply["row_metadata"]["review_destination"] == {"step": "ideal"}
     assert reply["row_metadata"]["after_ideal_text"] == result.parsed["after_ideal_text"]
+    assert reply["suggested_action"] == "record_again"
+
+    result.parsed.update(offer_next_take=False, after_ideal_text="Przećwicz pauzę po prośbie.")
+    with patch("services.llm.chat_complete", return_value=result):
+        reply, _ = project_chat.answer(
+            database, USER, ARC, "Pokaż mi Ideal Text i powiedz, co przećwiczyć w kolejnym nagraniu.",
+            take_session_id=TAKE, review_focus={"step": "practise", "snippet_id": "s2"}, live_take_feedback=True,
+        )
+    assert reply["row_metadata"]["after_ideal_text"] == "Przećwicz pauzę po prośbie. Chcesz nagrać kolejną próbę?"
     assert reply["suggested_action"] == "record_again"
 
 
@@ -516,6 +543,18 @@ def test_coaching_advice_contains_the_actual_line_and_uses_the_project_scope():
         "words": "Jeśli dostaniemy zgodę, kto z was chciałby poprowadzić pilotaż?",
         "arc_id": ARC, "take_session_id": TAKE,
     }
+
+
+def test_a_delivery_reply_keeps_its_only_quoted_passage_when_the_model_omits_the_reference():
+    database = FakeDB(audience="zarząd", goal="zatwierdzić pilotaż")
+    words = "Proszę, zatwierdźcie dziś pilotaż."
+    database.snippets[TAKE][0].update(transcript=words, metrics={"wpm": 125, "pause_ratio": 0.27})
+    answer = f'Prośba „{words}” miała sporo miejsca, by wybrzmieć.'
+    reply = _config_result(answer)
+    reply.parsed = {"answer": answer, "moment": None}
+    with patch("services.llm.chat_complete", return_value=reply):
+        response, _ = project_chat.answer(database, USER, ARC, "Jak wybrzmiała moja prośba w tym nagraniu?")
+    assert response["row_metadata"]["coach_moment"]["snippet_id"] == "s2"
 
 
 @pytest.mark.parametrize(("question", "answer"), [
