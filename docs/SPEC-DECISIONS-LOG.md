@@ -17903,3 +17903,9 @@ The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/b
 What stops: the walk screen, the full-screen Ideal Text, the lens screens, the insight and results cards, and the old links' screens. The single chat that behaves the same everywhere is a separate change.
 
 The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), [Ideal Text](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md) and [Principles](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md).
+
+**N692 · Use the same conversation surface for every chat** (founder, Take design Codex chat, 24 November 2026, “you open a chat and it everywhere behaves the same way”). Extends N648 item 8 and N666. Covers how a chat is opened and used.
+
+Speaking Coach, project and member conversations use the same message stream and composer. In a hosted chat that accepts Takes, the host's messages and the speaker's Take feedback appear together, ordered by time. Answer the host and ask about the selected Take from that composer using the existing session and permissions. Choosing a different chat keeps the respective conversation history and draft scope. Start a new Take from a chat that accepts Takes using that chat's scope.
+
+The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
