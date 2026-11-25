@@ -17969,3 +17969,9 @@ The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/b
 7. **Nothing is lost:** existing messages, Takes and projects move into these chats; nothing is dropped from the database.
 
 The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [Principles](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md).
+
+**N701 · Keep archived chats out of the active sidebar** (founder, Codex chat, 25 November 2026: “when smth is archived it disappears form the left menu too!”). Applies N14 and the existing chat archive actions to the flat sidebar in N700.
+
+After a successful archive, remove the matching row from the active sidebar immediately and keep it hidden on reload. The existing restore actions bring the row back with its history.
+
+The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
