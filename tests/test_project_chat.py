@@ -695,7 +695,9 @@ def test_coaching_eval_fixture_reads_only_its_authorised_recordings(monkeypatch)
         _takes_in_force(database, [{"id": "foreign-take", "user_id": "another-speaker"}])
 
 
-@pytest.mark.parametrize("question", ["How can I fix this?", "What is the weakest part of this fragment?"])
+@pytest.mark.parametrize("question", [
+    "How can I fix this?", "What is the weakest part of this fragment?", "What is the weakest part of this clip?",
+])
 def test_how_to_fix_the_reviewed_passage_ignores_an_offer_from_another_take(monkeypatch, question):
     from services import chat_practice
 
