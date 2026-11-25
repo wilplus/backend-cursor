@@ -11,10 +11,13 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
+from postgrest.types import ReturnMethod
+
 _log = logging.getLogger(__name__)
 
 CLONES = "ai_voice_clones"
 CYCLES = "ai_voice_cycles"
+_CHAT_STATE = "id,chat_retry_id,status,demo,exercise,selection,content_sha256,duration_ms,failure_kind"
 
 
 def _now() -> str:
@@ -79,10 +82,12 @@ def claim_clone_creation(database: Any, owner_user_id: str) -> bool:
         return False
 
 
-def get_cycle(database: Any, practice_id: str) -> Optional[dict]:
+def get_cycle(database: Any, practice_id: str, *, chat_retry_id: str | None = None) -> Optional[dict]:
     try:
-        res = (database.client.table(CYCLES).select("*")
-               .eq("practice_id", str(practice_id)).limit(1).execute())
+        columns = _CHAT_STATE if chat_retry_id else "*"
+        query = database.client.table(CYCLES).select(columns).eq("practice_id", str(practice_id))
+        query = query.eq("chat_retry_id", chat_retry_id) if chat_retry_id else query.is_("chat_retry_id", "null")
+        res = query.limit(1).execute()
         return _first(res)
     except Exception as error:  # noqa: BLE001
         _log.warning("ai voice: cycle read failed practice=%s: %s",
@@ -91,8 +96,7 @@ def get_cycle(database: Any, practice_id: str) -> Optional[dict]:
 
 
 def create_cycle(database: Any, row: dict) -> tuple[Optional[dict], bool]:
-    """(row, created). A second request for the same practice gets the first
-    request's row back (UNIQUE practice_id), never a second clip."""
+    """A repeated request for the same practice and chat retry gets its existing cycle."""
     try:
         res = database.client.table(CYCLES).insert(row).execute()
         rows = _rows(res)
@@ -101,16 +105,51 @@ def create_cycle(database: Any, row: dict) -> tuple[Optional[dict], bool]:
     except Exception as error:  # noqa: BLE001 — the unique key said "exists"
         _log.info("ai voice: cycle insert lost to an existing row practice=%s: %s",
                   row.get("practice_id"), type(error).__name__)
-    return get_cycle(database, str(row.get("practice_id"))), False
+    return get_cycle(database, str(row.get("practice_id")), chat_retry_id=row.get("chat_retry_id")), False
 
 
-def update_cycle(database: Any, cycle_id: str, fields: dict) -> None:
+def update_cycle(database: Any, cycle_id: str, fields: dict, *, retired: bool = False) -> bool:
     try:
-        (database.client.table(CYCLES).update({**fields, "updated_at": _now()})
-         .eq("id", str(cycle_id)).execute())
+        query = (database.client.table(CYCLES).update({**fields, "updated_at": _now()})
+                 .eq("id", str(cycle_id)))
+        query = query.eq("status", "deleted") if retired else query.neq("status", "deleted")
+        return bool(_rows(query.execute()))
     except Exception as error:  # noqa: BLE001
         _log.warning("ai voice: cycle write failed id=%s: %s",
                      cycle_id, type(error).__name__, exc_info=True)
+        return False
+
+
+def retire_cycle(database: Any, cycle_id: str) -> Optional[dict]:
+    """Stop publication before removing the clip. Return the latest storage coordinates."""
+    result = (database.client.table(CYCLES)
+              .update({"status": "deleted", "chat_audio": None, "updated_at": _now()})
+              .eq("id", str(cycle_id)).execute())
+    return _first(result)
+
+
+def retire_chat_cycles(database: Any, owner_user_id: str) -> bool:
+    """Erase all generated retry audio for the speaker, including older examples."""
+    try:
+        (database.client.table(CYCLES)
+         .update({"status": "deleted", "demo": "none", "chat_audio": None, "content_sha256": None,
+                  "prepared_text": None, "selection": None, "generation_metadata": None, "validation": None,
+                  "metrics_before": None, "metrics_after": None, "duration_ms": None, "updated_at": _now()},
+                 returning=ReturnMethod.minimal)
+         .eq("owner_user_id", str(owner_user_id)).not_.is_("chat_retry_id", "null").execute())
+        return True
+    except Exception:  # noqa: BLE001
+        _log.warning("ai voice: chat clip erasure failed owner=%s", owner_user_id, exc_info=True)
+        return False
+
+
+def read_chat_audio(database: Any, practice_id: str, chat_retry_id: str) -> bytes:
+    from services.chats import _bytes
+
+    result = (database.client.table(CYCLES).select("chat_audio")
+              .eq("practice_id", practice_id).eq("chat_retry_id", chat_retry_id)
+              .eq("status", "completed").limit(1).execute())
+    return _bytes((_first(result) or {}).get("chat_audio"))
 
 
 def claim_cycle(database: Any, cycle_id: str) -> bool:
@@ -128,9 +167,8 @@ def claim_cycle(database: Any, cycle_id: str) -> bool:
 
 def owner_cycles(database: Any, owner_user_id: str, limit: int = 50) -> list[dict]:
     try:
-        res = (database.client.table(CYCLES).select("*")
-               .eq("owner_user_id", str(owner_user_id))
-               .order("created_at", desc=True).limit(limit).execute())
+        res = (database.client.table(CYCLES).select("*").eq("owner_user_id", str(owner_user_id))
+               .is_("chat_retry_id", "null").order("created_at", desc=True).limit(limit).execute())
         return _rows(res)
     except Exception as error:  # noqa: BLE001
         _log.warning("ai voice: cycles read failed owner=%s: %s",

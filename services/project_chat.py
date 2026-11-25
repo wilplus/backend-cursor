@@ -981,34 +981,54 @@ def _practice_referent(context: ProjectChatContext, question: str, review: Optio
     return None
 
 
-def _published_tempo_referent(database: Any, context: ProjectChatContext, question: str) -> tuple[Source, str] | None:
-    """Use the walk's published tempo fix for a general request for a weakness."""
-    if not _WEAK_MOMENT_REQUEST.search(question) or _PASSAGE_BY_DESCRIPTION.search(question) or _SAME_MOMENT.search(question):
-        return None
-    from services.ideal_text_feedback_bake import _bake_enabled
-    from services.tempo_stretch import pick_for_take
+def _practice_on_review(offer: tuple[str, dict], context: ProjectChatContext, anchor: dict) -> bool:
+    if not anchor:
+        return True
+    moment = _dict(offer[1].get("coach_moment"))
+    if moment.get("take_session_id") != context.take_session_id:
+        return False
+    snippet = moment.get("snippet_id")
+    if anchor.get("snippet_id"):
+        return snippet == anchor["snippet_id"]
+    if "slide_index" in anchor:
+        return any(item.sources[0].take_id == context.take_session_id and item.sources[0].snippet_id == snippet
+                   and item.sources[0].slide == anchor["slide_index"] for item in context.recorded_passages)
+    return True
 
-    read_core = getattr(database, "get_ideal_text_document_core", None)
-    read_bake = getattr(database, "read_ideal_text_feedback_bake", None)
-    if not (_bake_enabled() and callable(read_core) and callable(read_bake)):
+
+def _pace_offer(database, context: ProjectChatContext, state: ProjectChatState, question: str,
+                language: str, review: Optional[dict]) -> tuple[dict, str] | None:
+    from services import chat_practice
+
+    if _PASSAGE_BY_DESCRIPTION.search(question) or requested_chat_intervention(question):
         return None
-    arc, owner, take = context.arc_id, context.user_id, context.take_session_id
-    core = _dict(read_core(arc, owner))
-    if str(core.get("source_take_session_id") or "") != take or not (snapshot := core.get("id")):
+    anchor: dict = {}
+    if chat_practice.asks_how(question):
+        anchor = _dict(_dict(review).get("anchor"))
+        if anchor.get("step") == "ideal":
+            return None
+        repeated = chat_practice.repeat_offer(context.project_rows, context.user_id, language)
+        if repeated and _practice_on_review(repeated, context, anchor):
+            text, metadata = repeated
+            return _reply(context, state, text, fast_path=True, extra_metadata=metadata)
+        cited = _practice_referent(context, question, review, named_followup=True) if not anchor else None
+        if not cited and not anchor:
+            return None
+    elif _WEAK_MOMENT_REQUEST.search(question):
+        cited = _practice_referent(context, question, review)
+    else:
         return None
-    bake = _dict(read_bake(arc, owner, str(snapshot)))
-    if not any(
-        (_dict(row).get("one_fix") or _dict(_dict(row).get("presentation")).get("one_fix")) == "tempo"
-        for row in (bake.get("changes") or ())
-    ):
-        return None
-    snippets = database.get_snippets_by_session(take) or []
-    if not (picked := pick_for_take(take, snippets)):
-        return None
-    selected_id = str(snippets[picked["index"]].get("id") or "")
-    passage = next((item for item in context.recorded_passages if item.sources[0].take_id == take
-                    and item.sources[0].snippet_id == selected_id), None)
-    return (passage.sources[0], f"{passage.text} The tempo feedback found this passage {picked['reading']}.") if passage else None
+    source = cited[0] if cited else None
+    offer = chat_practice.published_pace(
+        database, context.user_id, context.arc_id, source.take_id if source else context.take_session_id,
+        language, snippet=source.snippet_id if source else anchor.get("snippet_id"), completed_rows=context.project_rows,
+    )
+    if offer and _practice_on_review(offer, context, anchor):
+        text, metadata = offer
+        if _dict(review).get("live"):
+            metadata["live_take_feedback"] = True
+        return _reply(context, state, text, fast_path=True, extra_metadata=metadata)
+    return None
 
 
 def _literal_fragment(text: str, passages: list[Evidence], current_take: str) -> Evidence | None:
@@ -1057,7 +1077,7 @@ def _fragment_referent(context: ProjectChatContext, question: str, review: Optio
     return None
 
 
-def _answer_named_intervention(context: ProjectChatContext, state: ProjectChatState, question: str,
+def _answer_named_intervention(database: Any, context: ProjectChatContext, state: ProjectChatState, question: str,
                                language: str, review: Optional[dict]) -> tuple[dict, str] | None:
     intervention = requested_chat_intervention(question)
     if not intervention:
@@ -1077,6 +1097,14 @@ def _answer_named_intervention(context: ProjectChatContext, state: ProjectChatSt
         prompt = ("Który fragment masz na myśli? Podaj kilka słów z nagrania."
                   if language == "pl" else "Which fragment do you mean? Give me a few words from the recording.")
         return _reply(context, state, prompt, fast_path=True)
+    if intervention == "sniper":
+        from services import chat_practice
+        offer = chat_practice.published_pace(
+            database, context.user_id, context.arc_id, source.take_id, language, snippet=source.snippet_id,
+        )
+        if offer:
+            text, metadata = offer
+            return _reply(context, state, text, fast_path=True, extra_metadata=metadata)
     metadata = _answer_metadata(context, question, {}, {"practise": True}, review, (source, ""))
     answer = {
         "ai_audio": ("Przygotowuję przykład AI dla tego fragmentu.", "I’ll prepare an AI example for this passage."),
@@ -1786,6 +1814,31 @@ def _pending_conversation_slot(context: ProjectChatContext) -> str | None:
     return str(slot) if slot in ("audience", "goal") else None
 
 
+def _make_correction_practisable(context: ProjectChatContext, question: str, language: str,
+                                 answer: str, metadata: dict) -> str:
+    from services.chat_practice import asks_to_correct
+
+    if not asks_to_correct(question) or metadata.get(coach_wording.META):
+        return answer
+    moment = _dict(metadata.get("coach_moment"))
+    if moment.get("intervention"):
+        return answer
+    practice = _dict(metadata.get("chat_artifact")).get("intervention")
+    passage = next((evidence.spoken_text for evidence in context.recorded_passages
+                    if evidence.sources[0].take_id == moment.get("take_session_id")
+                    and evidence.sources[0].snippet_id == moment.get("snippet_id")), "")
+    wording = coach_wording.proposal({"words": passage, "delivery": practice},
+                                     arc_id=context.arc_id, take_id=moment.get("take_session_id") or "")
+    if wording and wording.get("delivery"):
+        metadata[coach_wording.META] = wording
+        return answer
+    if metadata.get("review_destination") or metadata.get("suggested_action"):
+        return answer
+    return ("Podaj kilka słów z fragmentu, który chcesz przećwiczyć."
+            if language == "pl" else "Give me a few words from the passage you want to practise.")
+
+
+
 def _answer_general(
     database: Any,
     user_id: str,
@@ -1817,10 +1870,7 @@ def _answer_general(
             context, state, no_later, fast_path=True,
             extra_metadata={"live_take_feedback": True} if _dict(review).get("live") else {},
         )
-    practice_referent = (
-        _practice_referent(context, question, review) or _published_tempo_referent(database, context, question)
-        if later is None else None
-    )
+    practice_referent = _practice_referent(context, question, review) if later is None else None
     passages = later if later is not None else _passage_references(context, question, in_review=review is not None)
     parsed, result, model_ms = _model_turn(
         context,
@@ -1845,7 +1895,13 @@ def _answer_general(
         answer_state = replace(state, next_slot="audience")
         model_answer = _setup_fallback(answer_state, target_language)
         parsed = None
-    answer = model_answer or _project_fallback(context, state, target_language)
+    metadata = _answer_metadata(
+        context, question, passages, parsed if model_answer else None, review, practice_referent,
+        later_only=later is not None,
+    )
+    answer = _make_correction_practisable(
+        context, question, target_language, model_answer or _project_fallback(context, state, target_language), metadata,
+    )
     return _reply(
         context,
         state,
@@ -1854,10 +1910,7 @@ def _answer_general(
         model=getattr(result, "model", None),
         model_ms=getattr(result, "duration_ms", model_ms),
         captured_slots=captured_slots,
-        extra_metadata=_answer_metadata(
-            context, question, passages, parsed if model_answer else None, review, practice_referent,
-            later_only=later is not None,
-        ),
+        extra_metadata=metadata,
     )
 
 
@@ -2015,6 +2068,16 @@ def _voice_reply_before_first_take(database, user: str, arc: str, turn: str, que
 def _route_chat_voice(database, context: ProjectChatContext, turn: str, question: str, anchor: dict | None):
     from services import chat_voice_reference
 
+    if any(row.get("client_id") == turn and _dict(row.get("metadata")).get("chat_practice_reply_id")
+           for row in context.project_rows):
+        from services import chat_practice
+
+        if retry := chat_practice.retry_reply(database, context.user_id, turn, context.arc_id,
+                                              _target_language(context, question)):
+            text, metadata = retry
+            state = derive_state(context, context.project_rows, None)
+            return _reply(context, state, text, extra_metadata=metadata), question, anchor
+
     reference = chat_voice_reference.resolve(
         database, context.user_id, turn, question, project=context.arc_id,
         has_take=True, rows=context.project_rows,
@@ -2094,10 +2157,12 @@ def answer(
     if review:
         state = replace(state, phase=ConversationPhase.CONVERSATION, next_slot="", open_question=None)
     target_language = _target_language(context, question)
-    if intervention := _answer_named_intervention(context, state, question, target_language, review):
+    if intervention := _answer_named_intervention(database, context, state, question, target_language, review):
         return intervention
     if fragment := _answer_fragment_request(context, state, question, target_language, review):
         return fragment
+    if pace := _pace_offer(database, context, state, question, target_language, review):
+        return pace
     if open_q and _meaningful_slot_answer(question):
         signed = _answer_signed_will(
             database,

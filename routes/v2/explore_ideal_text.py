@@ -754,6 +754,7 @@ def v2_explore_arc_will_question_voice(arc_id):
                 filename=upload.filename or "answer.webm", duration=duration,
                 turn=request.form.get("voice_turn_id"), project=str(arc_id),
                 snippet=snippet if _is_valid_uuid(snippet) else None,
+                practice_reply=request.form.get("chat_practice_reply_id"),
             )
             return jsonify(voice), 200
         messages = answer_voice(db, _adapter(user_id), upload.read(), user_id=user_id,

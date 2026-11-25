@@ -671,19 +671,42 @@ def test_a_general_improvement_question_cites_the_published_tempo_piece(monkeypa
     monkeypatch.setattr("services.ideal_text_feedback_bake._bake_enabled", lambda: True)
     monkeypatch.setattr("services.tempo_stretch.pick_for_take", lambda *_: {"index": 1, "reading": "rushed"})
 
-    def generate(**kwargs):
-        prompt = json.loads(kwargs["user"])
-        assert words in prompt["passage_to_practise"]["evidence"]
-        return _config_result("Give the two teams a little more room.")
-
-    with patch("services.llm.chat_complete", generate):
+    with patch("services.llm.chat_complete") as generate:
         reply, _ = project_chat.answer(
             database, USER, ARC, "What’s the next thing to improve?", take_session_id=TAKE,
             review_focus={"step": "feedback", "snippet_id": "s2"}, live_take_feedback=True,
         )
+    generate.assert_not_called()
     assert reply["row_metadata"]["coach_moment"] == {
-        "arc_id": ARC, "take_session_id": TAKE, "snippet_id": "tempo", "practise": True,
+        "arc_id": ARC, "take_session_id": TAKE, "snippet_id": "tempo", "practise": True, "intervention": "sniper",
     }
+    assert reply["row_metadata"]["chat_practice"] == {"tool": "sniper", "words": words, "reading": "rushed"}
+
+
+def test_how_to_fix_the_reviewed_passage_ignores_an_offer_from_another_take(monkeypatch):
+    from services import chat_practice
+
+    database = FakeDB()
+    earlier_id = "78df3a7f-4d38-42a4-b763-380e688d3ba0"
+    _, earlier = chat_practice.sniper(ARC, "take-a1", "s1", "The old opening.", "rushed", "en")
+    monkeypatch.setattr(chat_practice.Config, "SUPABASE_JWT_SECRET", "unit-test-secret")
+    earlier["arc_id"] = ARC
+    chat_practice.sign_bot_metadata(USER, earlier_id, earlier)
+    database.project_rows.append({"client_id": earlier_id, "role": "bot", "kind": "text",
+                                  "metadata": earlier, "client_created_at": "2026-11-24T14:00:00Z"})
+    database.get_ideal_text_document_core = lambda *_: {"id": "snapshot", "source_take_session_id": TAKE}
+    database.read_ideal_text_feedback_bake = lambda *_: {"changes": [{"one_fix": "tempo"}]}
+    database.get_snippets_by_session = lambda sid: database.snippets[sid]
+    monkeypatch.setattr("services.ideal_text_feedback_bake._bake_enabled", lambda: True)
+    monkeypatch.setattr("services.tempo_stretch.pick_for_take", lambda *_: {"index": 0, "reading": "rushed"})
+
+    reply, _ = project_chat.answer(
+        database, USER, ARC, "How can I fix this?", take_session_id=TAKE,
+        review_focus={"step": "feedback", "snippet_id": "s2"},
+    )
+    assert reply["row_metadata"]["coach_moment"]["take_session_id"] == TAKE
+    assert reply["row_metadata"]["coach_moment"]["snippet_id"] == "s2"
+    assert reply["row_metadata"]["chat_practice"]["words"] == database.snippets[TAKE][0]["transcript"]
 
 
 @pytest.mark.parametrize("model_asks", [True, False])

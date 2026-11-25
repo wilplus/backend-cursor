@@ -41,7 +41,8 @@ def _words(items: object) -> list[dict]:
 
 def hear(adapter, audio: bytes, *, user: str, filename: str, duration: int | None,
          turn: str | None, project: str | None = None, take: str | None = None,
-         snippet: str | None = None) -> dict:
+         snippet: str | None = None, practice_reply: str | None = None) -> dict:
+    from services.chat_practice import REPLY_ID
     from services.will_question import hear_answer_transcription
 
     adapter.authorization.require_current(adapter.coordinates.acquisition_principal_id, operation="recording")
@@ -55,6 +56,7 @@ def hear(adapter, audio: bytes, *, user: str, filename: str, duration: int | Non
             "audio_hash": sha256(audio).hexdigest(),
             "transcript": text, "duration_ms": duration_ms, "language": transcript.get("language"),
             "words": _words(transcript.get("words")),
+            **({REPLY_ID: practice_reply} if is_uuid(practice_reply) else {}),
         })
     return response
 
@@ -70,7 +72,7 @@ def receipt_payload(raw: object) -> dict | None:
     return payload if isinstance(payload, dict) else None
 
 
-def _measure(audio: bytes, transcript: str) -> dict:
+def _measure(audio: bytes, transcript: str, *, practice_words: list[dict] | None = None) -> dict:
     from services.audio_metrics import SAMPLE_RATE, analyze_pcm_window, decode_audio_to_pcm
     from services.plan_flow import MIN_VOICED_SEC
 
@@ -82,7 +84,14 @@ def _measure(audio: bytes, transcript: str) -> dict:
             pcm, start_offset_ms=0, duration_ms=math.ceil(len(pcm) * 1000 / SAMPLE_RATE),
             transcript=transcript, include_librosa=False,
         ) or {}
-        return metrics if metrics.get("voiced_duration_sec", 0) >= MIN_VOICED_SEC else {}
+        if metrics.get("voiced_duration_sec", 0) < MIN_VOICED_SEC:
+            return {}
+        if practice_words:
+            from services.ai_voice_validator import opening_contrast
+
+            metrics["opening_contrast_db"] = opening_contrast(pcm, SAMPLE_RATE, practice_words)
+            metrics["recorded_duration_ms"] = round(len(pcm) * 1000 / SAMPLE_RATE)
+        return metrics
     except (OSError, ValueError, RuntimeError) as error:
         log.warning("chat voice measurement unavailable: %s", type(error).__name__)
         return {}
@@ -91,12 +100,16 @@ def _measure(audio: bytes, transcript: str) -> dict:
 def analyze(database, user: str, audio: bytes, receipt: dict) -> dict:
     """Keep the Take's measurements private and preserve the original spoken words."""
     from services import verbal_cues, voice_confidence
+    from services.chat_practice import REPLY_ID
     from services.content_language import resolve_content_language
     from services.transcript_smoothing import count_fillers
 
     transcript = receipt["transcript"]
     language = resolve_content_language(recording_language=receipt.get("language"), typed_message=transcript)
-    metrics = _measure(audio, transcript)
+    if receipt.get(REPLY_ID):
+        metrics = _measure(audio, transcript, practice_words=receipt["words"])
+    else:
+        metrics = _measure(audio, transcript)
     if metrics and voice_confidence.enabled():
         baseline, kind = voice_confidence.resolve_confidence_baseline(user, [], database=database)
         voice_confidence.attach_voice_confidence([{"metrics": metrics}], baseline=baseline, baseline_kind=kind)
@@ -110,4 +123,5 @@ def analyze(database, user: str, audio: bytes, receipt: dict) -> dict:
         },
         "metrics": metrics,
         "delivery": delivery_description({"metrics": metrics}),
+        **({REPLY_ID: receipt[REPLY_ID]} if receipt.get(REPLY_ID) else {}),
     }

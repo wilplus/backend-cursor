@@ -19,9 +19,10 @@ services.ai_voice_*.
 from __future__ import annotations
 
 import logging
+from io import BytesIO
 
 import sentry_sdk
-from flask import jsonify, request
+from flask import jsonify, request, send_file
 
 from auth import require_auth
 from routes.phase2_guard import consent_choice_required, operational_purpose_disabled
@@ -43,20 +44,32 @@ def _owned_practice(practice_id: str):
     return practice, None
 
 
+def _chat_retry_available(practice: dict, retry: str, user: str) -> bool:
+    return _is_valid_uuid(retry) and bool(ai_voice_clip.chat_retry_evidence(db, practice, user, retry))
+
+
+@v2_bp.route("/user/confidence-practice/<practice_id>/ai-voice/chat/<chat_retry_id>", methods=["GET"])
 @v2_bp.route("/user/confidence-practice/<practice_id>/ai-voice", methods=["GET", "POST"])
 @require_auth
 @operational_purpose_disabled("personalized_exercise_recommendation")
 @consent_choice_required("personalised_practice")
-def v2_practice_ai_voice(practice_id):
+def v2_practice_ai_voice(practice_id, chat_retry_id=None):
     practice, refused = _owned_practice(practice_id)
     if refused:
         return refused
     try:
         user_id = str(getattr(request, "user_id", ""))
-        if request.method == "GET":
+        if request.method != "POST":
+            from services.ai_voice_store import get_cycle
+            if chat_retry_id:
+                if not _chat_retry_available(practice, chat_retry_id, user_id):
+                    return jsonify({"code": "NOT_FOUND"}), 404
+                cycle = get_cycle(db, practice_id, chat_retry_id=chat_retry_id)
+                response = jsonify(ai_voice_clip.state(db, practice, cycle))
+                response.headers["Cache-Control"] = "private, no-store"
+                return response, 200
             ai_voice_clip.note_attempts(
                 db, practice, db.list_confident_voice_practice_attempts(practice_id) or [])
-            from services.ai_voice_store import get_cycle
             return jsonify(ai_voice_clip.state(db, practice, get_cycle(db, practice_id))), 200
         principal = ai_voice_clip.principal_for(db, practice.get("take_session_id"), user_id)
         return jsonify(ai_voice_clip.ensure(
@@ -66,6 +79,26 @@ def v2_practice_ai_voice(practice_id):
         sentry_sdk.capture_exception(error)
         return jsonify({"demo": "video" if ai_voice_clip._has_video(practice) else "none",
                         "clip": None}), 200
+
+
+@v2_bp.route("/user/confidence-practice/<practice_id>/ai-voice/chat/<chat_retry_id>/audio", methods=["GET"])
+@require_auth
+@operational_purpose_disabled("personalized_exercise_recommendation")
+@consent_choice_required("personalised_practice")
+def v2_chat_retry_ai_audio(practice_id, chat_retry_id):
+    from services.ai_voice_store import read_chat_audio
+
+    practice, refused = _owned_practice(practice_id)
+    if refused:
+        return refused
+    if not _chat_retry_available(practice, chat_retry_id, str(request.user_id)):
+        return jsonify({"code": "NOT_FOUND"}), 404
+    audio = read_chat_audio(db, practice_id, chat_retry_id)
+    if not audio:
+        return jsonify({"code": "NOT_FOUND"}), 404
+    response = send_file(BytesIO(audio), mimetype="audio/mpeg", conditional=True)
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
 
 
 @v2_bp.route("/user/lounge/moment/<snippet_id>/ai-voice", methods=["POST"])
@@ -80,9 +113,16 @@ def v2_chat_moment_ai_voice(snippet_id):
     if not all(isinstance(value, str) and _is_valid_uuid(value) for value in (arc_id, take_id, snippet_id)):
         return jsonify({"code": "INVALID_INPUT"}), 400
     try:
+        variant = {}
+        if reply := body.get("coach_reply_id"):
+            from services.chat_practice import opening_retry_id
+            retry = opening_retry_id(db, str(request.user_id), reply, arc_id, take_id, snippet_id) if _is_valid_uuid(reply) else None
+            if not retry:
+                return jsonify({"code": "NOT_FOUND"}), 404
+            variant["chat_retry_id"] = retry
         result = ai_voice_clip.prepare_chat_example(
             db, arc_id=arc_id, take_id=take_id, snippet_id=snippet_id,
-            user_id=str(request.user_id),
+            user_id=str(request.user_id), **variant,
         )
     except Refusal as error:
         return jsonify(error.body), error.status

@@ -56,6 +56,16 @@ Willfidence reference when sufficient data is available. Only qualitative
 observations reach the coach. Erasing the parent message erases the clip and
 its analysis.
 
+Published pace corrections attach the Sniper and its exact words. The
+retry receipt names the coach reply that opened it. Its measured speech
+window and the same-passage check determine whether the pace improved.
+The next opening-emphasis example, when supported by the retry, uses a
+separate AI voice cycle linked to that saved recording and the original
+practice. It shares the authorised provider and generated-audio validation.
+Playback checks the recording and practice permissions each time. Erasing
+the retry also erases the generated audio. An inconclusive attempt repeats
+the current exercise.
+
 For a general request to improve, a published tempo fix uses the same
 timestamp-based passage as Sniper. A request about a named or cited fragment
 continues to use that fragment.

@@ -344,6 +344,7 @@ def v2_chat_voice():
             _adapter(user_id), upload.read(), user=user_id,
             filename=upload.filename or "answer.webm", duration=duration,
             turn=request.form.get("voice_turn_id"), project=project,
+            practice_reply=request.form.get("chat_practice_reply_id"),
         )
         return jsonify(response), 200
     except QuestionError as error:

@@ -569,3 +569,4 @@
 0531	a_chat_turn_keeps_its_artifact.sql
 0532	a_speaker_can_request_a_private_human_coach_review.sql
 0533	a_spoken_lounge_reply_keeps_its_recording.sql
+0534	a_chat_retry_can_have_its_own_ai_example.sql

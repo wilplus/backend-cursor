@@ -10,8 +10,11 @@ MAX_BYTES = 4 * 1024 * 1024
 MIMES = {"audio/webm", "audio/mp4", "audio/ogg", "audio/wav"}
 
 
-def _message(database, user: str, turn: str) -> dict:
-    row = database.get_lounge_message_by_client_id(user, turn) if is_uuid(turn) else None
+def _message(database, user: str, turn: str, *, by_message_id: bool = False) -> dict:
+    row = None
+    if is_uuid(turn):
+        read = database.get_lounge_message_by_id if by_message_id else database.get_lounge_message_by_client_id
+        row = read(user, turn)
     if (not row or row.get("chat_erased") or row.get("role") != "user"
             or (row.get("metadata") or {}).get("voice_clip") is not True):
         raise Refusal("NOT_FOUND", "Recording not found.", 404)
@@ -25,11 +28,14 @@ def _attachment(database, key: str, fields: str) -> dict | None:
 
 
 def _scope(row: dict, user: str, turn: str) -> dict:
+    from services.chat_practice import REPLY_ID
+
     meta = row.get("metadata") or {}
     focus = meta.get("review_focus")
     return {
         "user": user, "turn": turn, "project": meta.get("arc_id"),
         "take": meta.get("take_session_id"), "snippet": focus.get("snippet_id") if isinstance(focus, dict) else None,
+        REPLY_ID: meta.get(REPLY_ID),
     }
 
 
@@ -63,15 +69,23 @@ def save(database, user: str, turn: str, raw: bytes, content_type: str, receipt:
 
 def read_analysis(database, user: str, turn: str, project: str | None) -> dict | None:
     """Recheck ownership and chat scope before reading saved delivery evidence."""
+    attempt = read_attempt(database, user, turn, (project,))
+    return attempt[1] if attempt else None
+
+
+def read_attempt(database, user: str, turn: str, projects: tuple[str | None, ...],
+                 *, by_message_id: bool = False) -> tuple[dict, dict] | None:
+    """Return the evidence and immutable message that owns it."""
     try:
-        row = _message(database, user, turn)
+        row = _message(database, user, turn, by_message_id=by_message_id)
     except Refusal:
         return None
     meta = row.get("metadata") or {}
-    if meta.get("arc_id") != project or (not project and (meta.get("place") != "speaking" or meta.get("chat"))):
+    project = meta.get("arc_id")
+    if project not in projects or (not project and (meta.get("place") != "speaking" or meta.get("chat"))):
         return None
-    stored = _attachment(database, row["id"], "analysis")
-    return stored.get("analysis") if stored else None
+    analysis = (_attachment(database, row["id"], "analysis") or {}).get("analysis")
+    return (row, analysis) if isinstance(analysis, dict) else None
 
 
 def read(database, user: str, turn: str) -> tuple[bytes, str]:

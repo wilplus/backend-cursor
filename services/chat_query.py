@@ -485,15 +485,17 @@ def _chat_turn_rows(
             } or None,
         })
     if bot_row:
+        from services.chat_practice import sign_bot_metadata
+
+        metadata = {**(_bot_metadata(
+            intent=intent, suggested_action=suggested_action,
+            suggested_actions=suggested_actions, bubbles=bubbles,
+            app_action=app_action, response_receipt=response_receipt,
+            claim_id=claim_id, extra=row_metadata) or {}), **stamp, "reply_to_client_id": u_id}
+        sign_bot_metadata(str(user_id), b_id, metadata)
         rows.append({
             "client_id": b_id, "role": "bot", "kind": "text", "body": answer,
-            "metadata": {**(_bot_metadata(
-                intent=intent, suggested_action=suggested_action,
-                suggested_actions=suggested_actions, bubbles=bubbles,
-                app_action=app_action, response_receipt=response_receipt,
-                claim_id=claim_id,
-                extra=row_metadata) or {}), **stamp,
-                         "reply_to_client_id": u_id},
+            "metadata": metadata,
             "client_created_at": now_iso,
         })
     if offer:
@@ -1351,9 +1353,13 @@ def answer_chat(database, *, user_id, question: str, history, context,
         if stop:
             return finalize(*stop)
         if user_id and user_client_id:
+            from services import chat_practice
             from services import chat_voice_reference
             from services.content_language import resolve_content_language
 
+            if practice := chat_practice.main_chat_continuation(database, str(user_id), user_client_id, question):
+                text, metadata = practice
+                return finalize(_reply(text, debug={}, row_metadata=metadata), "speaking_coach")
             reference = chat_voice_reference.resolve(database, str(user_id), user_client_id, question)
             if reference is not None:
                 language = resolve_content_language(

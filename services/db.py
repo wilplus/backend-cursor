@@ -12019,20 +12019,27 @@ class DatabaseService:
         self, user_id: str, client_id: str,
     ) -> Optional[Dict[str, Any]]:
         """One owner-scoped idempotent Lounge event, if it exists."""
-        if not user_id or not client_id:
+        return self._lounge_message(user_id, "client_id", client_id)
+
+    def get_lounge_message_by_id(self, user_id: str, message_id: str) -> Optional[Dict[str, Any]]:
+        """Resolve a saved recording by its immutable parent row."""
+        return self._lounge_message(user_id, "id", message_id)
+
+    def _lounge_message(self, user_id: str, field: str, value: str) -> Optional[Dict[str, Any]]:
+        if not user_id or not value:
             return None
         try:
             res = (
                 self.client.table("lounge_messages")
                 .select("id,client_id,role,kind,body,metadata,client_created_at,chat_erased")
                 .eq("user_id", user_id)
-                .eq("client_id", client_id)
+                .eq(field, value)
                 .limit(1)
                 .execute()
             )
             return res.data[0] if res.data else None
         except Exception as e:
-            logger.warning("get_lounge_message_by_client_id failed: %s", e)
+            logger.warning("lounge message read failed: %s", e)
             return None
 
     def first_coach_update_bubble(
