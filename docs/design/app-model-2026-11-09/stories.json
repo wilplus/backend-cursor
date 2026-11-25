@@ -3131,8 +3131,7 @@
   "tests": [
    "src/components/willab/paragraphTapBookmark.test.tsx",
    "src/lib/willab/answeredBookmark.test.ts",
-   "src/lib/willab/deckChunks.test.ts",
-   "src/components/willab/readoutFeedbackPending.test.tsx"
+   "src/lib/willab/deckChunks.test.ts"
   ],
   "evals": []
  },
