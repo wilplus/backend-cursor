@@ -65,6 +65,7 @@ class LLMSpec:
     max_tokens: int
     response_format: Optional[dict] = None
     timeout_seconds: Optional[float] = None
+    reasoning_effort: Optional[str] = None
     """Forwarded verbatim to OpenAI's API. ``None`` = default (plain
     text). For JSON output use ``{"type": "json_object"}``; for a
     pinned schema use ``{"type": "json_schema", "json_schema": ...}``
@@ -123,6 +124,13 @@ SPEC_SPEAKING_COACH_TAKE = LLMSpec(
     response_format=None, timeout_seconds=15.0,
 )
 """Focused reflection on a selected Take and its words and delivery."""
+
+SPEC_CALIBRATION_CHAT = LLMSpec(
+    model="gpt-6.2-sol", temperature=1.0, max_tokens=1600, timeout_seconds=30.0, reasoning_effort="medium",
+)
+SPEC_CALIBRATION_CHAT_STRONG = LLMSpec(
+    model="gpt-6.2-astra", temperature=1.0, max_tokens=2400, timeout_seconds=45.0, reasoning_effort="medium",
+)
 
 SPEC_PROJECT_CHAT = LLMSpec(
     model=CHEAP_MODEL, temperature=0.4, max_tokens=360,

@@ -51,7 +51,7 @@ def operational_chat_complete(
     temperature: float,
     max_tokens: int,
     response_format: Optional[dict] = None,
-    timeout: Optional[float] = None,
+    timeout: Optional[float] = None, reasoning_effort: Optional[str] = None,
 ) -> Any:
     """Call the shared chat transport for a synthetic operational probe.
 
@@ -59,12 +59,12 @@ def operational_chat_complete(
     user-usage ledger. It is reserved for probes whose prompts contain no
     speaker data; production surfaces must call :func:`chat_complete`.
     """
-    create_kwargs: dict[str, Any] = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-    }
+    create_kwargs: dict[str, Any] = {"model": model, "messages": messages}
+    if reasoning_effort:
+        create_kwargs.update(reasoning_effort=reasoning_effort, max_completion_tokens=max_tokens)
+    else:
+        create_kwargs.update(temperature=temperature, max_tokens=max_tokens)
+
     if response_format is not None:
         create_kwargs["response_format"] = response_format
     if timeout is not None:
@@ -342,6 +342,7 @@ def chat_complete(
             max_tokens=int(create_kwargs["max_tokens"]),
             response_format=create_kwargs.get("response_format"),
             timeout=create_kwargs.get("timeout"),
+            **({"reasoning_effort": spec.reasoning_effort} if spec.reasoning_effort else {}),
         )
     except Exception as e:
         _record_failure(failure_out, "provider_timeout"
