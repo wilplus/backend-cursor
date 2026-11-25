@@ -17927,3 +17927,11 @@ The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/b
 In My Chat → AI → Training, the founder chooses an owned Take and exact moment, records a human observation before seeing measured cues, and can chat, assign values and save the calibration to that moment. Use the app’s Whisper for a fresh retry and its existing ElevenLabs voice for a checked spoken example. Use GPT‑6.2 in this chat alone. Human calibration, measured cues and exercise outcomes remain separate. The live picker and shared learning require their own approved changes.
 
 The rules: [AI voice in practice](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md).
+
+**N696 · Chat Builder: no subchats, and the chat answers as built** (founder, the Claude Code chat, 25 November 2026, “please delete from the app the subchats entirely”, “audit the chat builder and make it work”, “do not touch the AI part”). Replaces N666 item 2 for subchats; the AI tab is untouched.
+
+1. **No subchats.** A built chat has one conversation. The Subchats list, its add form, the sidebar rows under the chat, and archive, restore and delete for a subchat are gone from the app and the API. Subchats a person made earlier are no longer shown; deleting the chat still erases their saved turns. Nothing is dropped from the database.
+2. **The build talk asks Will for its suggestions.** For a job the table does not know, the first taps and the first line come from Will's suggestions (`POST /v2/chats/setup/suggest`, 0 or 1 provider call, nothing kept), not from the chat's reply route, which has no saved chat while the talk runs and so always gave the generic set.
+3. **Test answers from the chat as built.** The reply route reads the chat the talk published, else the older blank-setup recipe. The host is the one trying, so the answer shows at once and no draft is kept for them to send. Changing the first taps in Settings saves the chat again.
+
+No migration in this entry. No rules page beyond the one-line changes in the frontend [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
