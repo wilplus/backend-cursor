@@ -211,6 +211,10 @@ the separate semantic grader.
 python tests/evals/run_prompt_evals.py --surface speaking_coach
 ```
 
+## Insights when asked (N691 item 4, 25 November 2026)
+
+`services/speaker_insights.py`. When the speaker asks for insights in either chat ("what have you noticed about me?", "jak mi idzie?"), `chat_query._coach_intercept` answers before the coach: one generation from Will's private note, what Will said after the speaker's Takes whose processing authorization is in force (`speaker_lookup._takes_in_force`, failing closed), and the messages the speaker wrote. The answer is words only; a reply that puts a number on the speaker is dropped and the usual reply answers instead. Nothing is stored and no card is shown. Guarded by `tests/test_speaker_insights.py`.
+
 ## Storage (migration 0480)
 
 - `speaker_memory_events`: the raw inputs, kept for good. They are the asset:
