@@ -107,6 +107,9 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     "sniper_profile", "acoustic_baseline", "user_audits",
     "product_discoveries", "legacy_focus_questions", "legacy_focus_tasks",
     "legacy_warm_up_tasks",
+    # The curator can annotate several projects or imported clips. Project
+    # deletion uses the exact Take and snippet selectors, not this account key.
+    "speaking_patterns_by_curator",
     "orphan_metadata", "provider_operations", "audio_metadata",
     "audio_deletion_evidence", "authorization_receipts",
     "consent_choice_events", "blind_check_objections",

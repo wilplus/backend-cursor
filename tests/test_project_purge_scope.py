@@ -123,6 +123,18 @@ def test_a_project_purge_finishes_for_a_speaker_will_knows():
             if (rows := account.tables[name])} == {}
 
 
+def test_project_purge_removes_its_pattern_and_leaves_the_corpus_example():
+    database = PurgeDb({"speaking_pattern_examples": [
+        {"id": "own", "session_id": "take-1", "snippet_id": "snip-1", "curator_id": "user-1"},
+        {"id": "import", "session_id": "corpus-1", "snippet_id": "import-1", "curator_id": "user-1"},
+    ]}, kind="project_deletion")
+
+    assert not any(target.metadata.get("reason_code") == "PROJECT_SCOPE_UNRESOLVED"
+                   for target in inventory(database, scope.ProjectPurgeOrchestrator).values())
+    erase(database, scope.ProjectPurgeOrchestrator)
+    assert [row["id"] for row in database.tables["speaking_pattern_examples"]] == ["import"]
+
+
 @pytest.mark.parametrize("kind,wrong,right", [
     ("account_deletion", scope.ProjectPurgeOrchestrator, DataPurgeOrchestrator),
     ("project_deletion", DataPurgeOrchestrator, scope.ProjectPurgeOrchestrator),
