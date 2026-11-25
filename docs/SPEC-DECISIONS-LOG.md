@@ -17945,3 +17945,15 @@ Keep the initial baseline, on-demand collection and occasional refresh in separa
 As an implementation evidence guard, store the invited context separately from the speaker’s actual felt energy for each answer. Coordination permits a local preview with a separate test database and storage. The decision applies only to the isolated test app.
 
 No rules page.
+
+**N698 · One kind of chat: you decide what a chat is by how you use it** (founder, Claude Code chat, 25 November 2026: "each chart is the same. There's no sub chart … You decided by how you use it what chat it is, not the infrastructure", with the sidebar and "+" menu screenshots; then "1. ok 2. just send it to the one that was last used 3. yes"). Extends N692; replaces the read-time sorting of rows into Speaking Coach, Principles and Will (N635) and the project chats nested under Speaking Coach.
+
+1. **Every chat of one's own is the same kind of chat:** the same composer and "+" menu (a recording, files, slides, the projects), the same coaching, insights when asked. A message and Will's reply belong to the chat they were written in.
+2. **One flat list.** Speaking Coach, Principles and each project become top-level chats; nothing is nested. "New chat" replaces "Start a new project".
+3. **A chat becomes what it is used for.** Recording a Take or adding slides in a chat gives it its project, one project per chat; recording again there adds a Take to that project. A different talk is a new chat.
+4. **Any chat can be renamed** from its ⋯ or by tapping its title.
+5. **Will's unprompted messages** (the Sunday note, strengths, plan reminders) go to the chat the speaker used last.
+6. **Chats with other people** stay as they are, in the same list.
+7. **Nothing is lost:** existing messages, Takes and projects move into these chats; nothing is dropped from the database.
+
+The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [Principles](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md).
