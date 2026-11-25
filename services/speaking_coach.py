@@ -75,7 +75,7 @@ _FORBIDDEN_OUTPUT = re.compile(
     re.IGNORECASE,
 )
 _PRACTICE_REQUEST = re.compile(r"\b(?:practi[cs]\w*|try|exercise\w*|work on|improve|next step|"
-                               r"sound more confident|ćwicz\w*|popraw\w*|spróbow\w*|"
+                               r"sound more confident|(?:prze)?ćwicz\w*|popraw\w*|spróbow\w*|"
                                r"brzmieć pewniej)\b", re.IGNORECASE)
 _DELIVERY_QUESTION = re.compile(
     r"\b(?:did i sound|how (?:did|do) i sound|brzmiał[ae]m|jak brzm\w*)\b", re.IGNORECASE,

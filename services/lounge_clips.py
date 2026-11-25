@@ -48,12 +48,14 @@ def requested_chat_intervention(question: str) -> Optional[str]:
 
 
 def chat_moment_reference(arc_id: str, take_id: str, snippet_id: str,
-                          *, practise: bool = False, intervention: Optional[str] = None) -> dict:
+                          *, practise: bool = False, intervention: Optional[str] = None,
+                          playback: bool | None = None) -> dict:
     """The durable chat reference. Playback gets a fresh link on read."""
     return {
         "arc_id": arc_id, "take_session_id": take_id, "snippet_id": snippet_id,
         "practise": practise,
         **({"intervention": intervention} if intervention else {}),
+        **({"playback": playback} if isinstance(playback, bool) else {}),
     }
 
 

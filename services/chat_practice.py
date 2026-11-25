@@ -82,7 +82,7 @@ def _copy(lines: tuple[str, str], language: str) -> str:
 
 
 def _offer(moment: dict, plan: dict, text: str) -> tuple[str, dict]:
-    return text, {"coach_moment": moment, META: plan}
+    return text, {"coach_moment": {"playback": False, **moment}, META: plan}
 
 
 def sniper(arc: str, take: str, clip: str, words: str, reading: str, language: str) -> tuple[str, dict]:
@@ -337,7 +337,8 @@ def _hearing_reply(database, user: str, message_id: str, project: str | None, la
     if opening := opening_example(database, user, moment, heard):
         next_plan = {"tool": "ai_audio", "words": opening, "retry_message_id": message_id,
                      "guidance": _copy(_OPENING_COPY, language)}
-        answer, metadata = _offer({**moment, "intervention": "ai_audio"}, next_plan, _copy(_PACE_DONE, language))
+        answer, metadata = _offer({**moment, "intervention": "ai_audio", "playback": False},
+                                  next_plan, _copy(_PACE_DONE, language))
         return answer, {**metadata, **completed}
     return _copy(_PACE_DONE, language), completed
 

@@ -14,6 +14,7 @@ import os
 import sys
 from types import SimpleNamespace
 from typing import Any, Callable
+from uuid import NAMESPACE_URL, uuid5
 
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _REPO_ROOT not in sys.path:
@@ -159,7 +160,7 @@ def _walk_voice(inp: dict) -> Any:
     return compose(inp.get("context") or {}, inp.get("step") or {})
 
 
-def _synthetic_chat_client(user: str):
+def _synthetic_chat_client(user: str, recordings: dict | None = None):
     """Supply read-only authority for this fixture's speaker."""
     principal = f"{user}-principal"
 
@@ -172,13 +173,48 @@ def _synthetic_chat_client(user: str):
             raise ValueError("This evaluation has no matching authorization fixture")
         return SimpleNamespace(execute=lambda: SimpleNamespace(data=result))
 
-    return SimpleNamespace(rpc=rpc)
+    def table(name: str):
+        if name != "lounge_voice_replies":
+            raise ValueError("This evaluation has no matching recording fixture")
+
+        def by_message(field: str, key: str):
+            if field != "message_id":
+                raise ValueError("Recording fixtures require an exact message")
+            analysis = (recordings or {}).get(key)
+            data = [{"analysis": analysis}] if analysis is not None else []
+            return SimpleNamespace(limit=lambda _limit: SimpleNamespace(
+                execute=lambda: SimpleNamespace(data=data)))
+
+        return SimpleNamespace(select=lambda _fields: SimpleNamespace(eq=by_message))
+
+    return SimpleNamespace(rpc=rpc, table=table)
+
+
+def _project_chat_rows(inp: dict, user: str, project: str, take: str) -> tuple[list[dict], dict, str]:
+    """Saved mic analyses are fixture evidence; the coach itself remains live."""
+    from services.lounge_clips import chat_moment_reference
+
+    rows: list[dict] = []
+    recordings: dict = {}
+    turns = [*inp.get("history", []), {"role": "user", "body": inp["question"], "recording": inp.get("recording")}]
+    for index, turn in enumerate(turns):
+        key = str(uuid5(NAMESPACE_URL, f"{user}/{project}/{index}/{turn['body']}"))
+        meta: dict = {"arc_id": project, "take_session_id": take, "project_chat": True}
+        if snippet := turn.get("moment"):
+            meta["coach_moment"] = chat_moment_reference(project, take, snippet)
+        if isinstance(turn.get("voice_focus"), int):
+            meta["chat_voice_focus"] = {"source": "clip", "turn_id": rows[turn["voice_focus"]]["client_id"], "playback": False}
+        if turn.get("recording") is not None:
+            meta["voice_clip"] = True
+            recordings[key] = turn["recording"]
+        rows.append({"id": key, "client_id": key, "role": turn["role"], "kind": "text", "body": turn["body"],
+                     "metadata": meta, "client_created_at": f"2026-11-23T12:00:{index:02d}Z"})
+    return rows, recordings, rows[-1]["client_id"]
 
 
 def _project_chat(inp: dict) -> dict:
     """Answer in a synthetic project using the same scoped context and attachments."""
     from services import project_chat
-    from services.lounge_clips import chat_moment_reference
 
     user_id, arc_id, take_id = "project-chat-eval", "eval-project", "eval-take"
     take: dict[str, Any] = {
@@ -186,7 +222,8 @@ def _project_chat(inp: dict) -> dict:
         "take_index": 1, "status": "completed", "analysis_state": "ready",
         "results_published_at": "2026-11-23T12:00:00Z",
         "transcription_language": inp.get("language"),
-        "intake_context": {"topic": inp.get("topic")},
+        "intake_context": {"topic": inp.get("topic"), "audience": inp.get("audience"),
+                           "strategic_context": f"Desired call to action: {inp['goal']}" if inp.get("goal") else ""},
     }
     snippets = [{
         "id": "opening", "session_id": take_id, "transcript": inp["transcript"],
@@ -198,18 +235,15 @@ def _project_chat(inp: dict) -> dict:
             snippets.append({
                 "id": item["snippet_id"], "session_id": take_id, "transcript": item["transcript_corrected"],
             })
-    rows = []
-    for turn in inp.get("history", []):
-        metadata: dict = {"arc_id": arc_id, "take_session_id": take_id, "project_chat": True}
-        if snippet := turn.get("moment"):
-            metadata["coach_moment"] = chat_moment_reference(arc_id, take_id, snippet)
-        rows.append({"role": turn["role"], "body": turn["body"], "metadata": metadata})
+    rows, recordings, turn = _project_chat_rows(inp, user_id, arc_id, take_id)
     database = SimpleNamespace(
-        client=_synthetic_chat_client(user_id),
+        client=_synthetic_chat_client(user_id, recordings),
         get_arc_sessions=lambda arc: [take] if arc == arc_id else [],
         get_snippets_by_sessions=lambda ids: {take_id: snippets} if take_id in ids else {},
         get_coach_snippet_drafts=lambda sid: inp.get("feedback", []) if sid == take_id else [],
         get_project_lounge_messages_page=lambda *_args, **_kwargs: rows,
+        get_lounge_message_by_client_id=lambda owner, key: next(
+            (row for row in rows if row["client_id"] == key), None) if owner == user_id else None,
         get_ideal_text_document_core=lambda arc, owner: {
             "source_take_session_id": take_id, "payload": {"text": inp["ideal_text"]},
         } if arc == arc_id and owner == user_id and inp.get("ideal_text") else None,
@@ -218,6 +252,7 @@ def _project_chat(inp: dict) -> dict:
         database, user_id, arc_id, inp["question"], take_session_id=take_id,
         review_focus=inp.get("focus", {"step": "feedback", "snippet_id": "opening"}),
         live_take_feedback=inp.get("live_take_feedback") is True,
+        user_client_id=turn,
     )
     metadata = reply["row_metadata"]
     moment = metadata.get("coach_moment") or {}
@@ -228,6 +263,10 @@ def _project_chat(inp: dict) -> dict:
     }
     if inp.get("include_wording"):
         output["wording"] = metadata.get("coach_wording")
+    if recordings:
+        focus = metadata.get("chat_voice_focus") or {}
+        output.update(voice_source=focus.get("source"), voice_is_current=focus.get("turn_id") == turn,
+                      playback=focus.get("playback"))
     if inp.get("live_take_feedback"):
         output["intervention"] = (metadata.get("chat_artifact") or {}).get("intervention")
         output["readiness"] = metadata.get("after_ideal_text")

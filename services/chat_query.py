@@ -1365,10 +1365,10 @@ def answer_chat(database, *, user_id, question: str, history, context,
                 language = resolve_content_language(
                     typed_message=question, fallback=(reference.evidence or {}).get("language"),
                 )
-                text = chat_voice_reference.feedback(reference, language, str(user_id))
+                text, metadata = chat_voice_reference.feedback(reference, language, str(user_id))
                 return finalize({
                     "answer": text, "bubbles": [text], "show_record_ui": False,
-                    "row_metadata": reference.metadata,
+                    "row_metadata": metadata,
                 }, "speaking_coach")
     for failure, intercept in _intercepts(user_id, app_config, ordinary_coach=ordinary_coach):
         try:

@@ -11,6 +11,7 @@ REFLECTION_RULES = (
     "land differently from a firmer one. Keep the speaker's own name for an "
     "obstacle, such as 'inner voice'. End with one question about what helps "
     "them make the specific speaking choice or when else they use it. "
+    "Ask that question directly with a question mark, rather than an indirect 'I wonder'. "
     "When an action would help, offer "
     "one small rehearsal tied to that moment. For a practice request, use the "
     "reviewed exercise if supplied and ask a specific question about the habit. "

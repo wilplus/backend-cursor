@@ -25,6 +25,8 @@ OUTCOME
       next-Take action.
   O10 A request for the same fragment retrieves the exact recording and
       words from the project even after a reply without an attached clip.
+  O11 Each new chat recording is coached as a new attempt using its own
+      words and cues; a typed revision has no new vocal evidence.
 PROVES   O1 -> test_context_is_bounded_to_current_project_and_carries_feedback_deck_ideal_text
          O2 -> test_state_skips_known_audience_and_goal_and_asks_one_slot_at_a_time
          O3 -> test_tone_and_content_language_are_passed_to_the_single_generation
@@ -35,6 +37,7 @@ PROVES   O1 -> test_context_is_bounded_to_current_project_and_carries_feedback_d
          O8 -> test_practice_follow_up_can_refer_to_an_older_take
          O9 -> test_record_again_is_available_after_ideal_text
          O10 -> test_fragment_follow_ups_use_the_quoted_recording_when_the_first_reply_has_no_clip
+         O11 -> test_successive_recorded_endings_and_a_typed_revision_use_the_latest_attempt
 WHY      Project Chat redesign, 2026-11-18; preserve the current-project
          processing boundary and the Feedback walk's record -> process -> Take loop.
 
@@ -317,7 +320,7 @@ def test_a_review_question_uses_the_exact_old_moment_without_capturing_setup():
     assert words == {"anchor": focus, "exact_take_words": "The old opening."}
     assert result["row_metadata"]["review_focus"] == focus
     assert result["row_metadata"]["coach_moment"] == {
-        "arc_id": ARC, "take_session_id": "take-a1", "snippet_id": "s1", "practise": True,
+        "arc_id": ARC, "take_session_id": "take-a1", "snippet_id": "s1", "practise": True, "playback": False,
     }
     assert result["row_metadata"]["take_session_id"] == "take-a1"
     assert result["row_metadata"]["next_slot"] == ""
@@ -394,7 +397,7 @@ def test_project_chat_only_attaches_a_published_moment_from_this_take():
     with patch("services.llm.chat_complete", return_value=result):
         response, _ = project_chat.answer(database, USER, ARC, "How did the ask land?", take_session_id=TAKE)
         assert response["row_metadata"]["coach_moment"] == {
-            "arc_id": ARC, "take_session_id": TAKE, "snippet_id": "s2", "practise": True,
+            "arc_id": ARC, "take_session_id": TAKE, "snippet_id": "s2", "practise": True, "playback": False,
         }
         result.parsed["moment"] = "M1"
         response, _ = project_chat.answer(database, USER, ARC, "How did the ask land?", take_session_id=TAKE)
@@ -545,7 +548,7 @@ def test_ordinary_project_reply_uses_its_own_vocal_evidence_and_attaches_the_pas
     with patch("services.llm.chat_complete", generate):
         response, _ = project_chat.answer(database, USER, ARC, question)
     assert response["row_metadata"]["coach_moment"] == {
-        "arc_id": ARC, "take_session_id": TAKE, "snippet_id": "closing", "practise": True,
+        "arc_id": ARC, "take_session_id": TAKE, "snippet_id": "closing", "practise": True, "playback": False,
     }
 
 
@@ -572,7 +575,7 @@ def test_a_practice_follow_up_keeps_the_saved_moment_in_its_take(question, inter
         reply, _ = project_chat.answer(database, USER, ARC, question)
     generate.assert_not_called()
     metadata = reply["row_metadata"]
-    assert metadata["coach_moment"] == {**previous, "practise": True, "intervention": intervention}
+    assert metadata["coach_moment"] == {**previous, "practise": True, "intervention": intervention, "playback": False}
     assert reply["answer"]
     assert "review_focus" not in metadata
     assert "chat_artifact" not in metadata
@@ -602,7 +605,7 @@ def test_a_rephrase_returns_the_words_and_exact_original_moment_together():
         reply, _ = project_chat.answer(database, USER, ARC, "Can you rephrase that?")
     assert reply["row_metadata"]["coach_wording"]["take_session_id"] == TAKE
     assert reply["row_metadata"]["coach_moment"] == {
-        "arc_id": ARC, "take_session_id": TAKE, "snippet_id": "s2", "practise": False,
+        "arc_id": ARC, "take_session_id": TAKE, "snippet_id": "s2", "practise": False, "playback": False,
     }
 
 
@@ -678,7 +681,7 @@ def test_a_general_improvement_question_cites_the_published_tempo_piece(monkeypa
         )
     generate.assert_not_called()
     assert reply["row_metadata"]["coach_moment"] == {
-        "arc_id": ARC, "take_session_id": TAKE, "snippet_id": "tempo", "practise": True, "intervention": "sniper",
+        "arc_id": ARC, "take_session_id": TAKE, "snippet_id": "tempo", "practise": True, "intervention": "sniper", "playback": False,
     }
     assert reply["row_metadata"]["chat_practice"] == {"tool": "sniper", "words": words, "reading": "rushed"}
 
@@ -762,7 +765,7 @@ def test_topic_request_can_practise_a_words_only_fragment_after_ideal_text(model
         )
     embed.assert_not_called()
     assert reply["row_metadata"]["coach_moment"] == {
-        "arc_id": ARC, "take_session_id": TAKE, "snippet_id": "cars", "practise": True,
+        "arc_id": ARC, "take_session_id": TAKE, "snippet_id": "cars", "practise": True, "playback": False,
     }
     assert reply["row_metadata"]["review_focus"] == focus
     expected_question = "What felt uncertain?" if model_asks else "What made this part feel uncertain to you?"
@@ -789,7 +792,7 @@ def test_practice_follow_up_can_refer_to_an_older_take():
             review_focus={"step": "feedback"}, live_take_feedback=True,
         )
     assert reply["row_metadata"]["take_session_id"] == "take-a5"
-    assert reply["row_metadata"]["coach_moment"] == {**last, "practise": True}
+    assert reply["row_metadata"]["coach_moment"] == {**last, "practise": True, "playback": False}
 
 
 @pytest.mark.parametrize("generated", [True, False])
@@ -826,7 +829,7 @@ def test_fragment_follow_ups_use_the_quoted_recording_when_the_first_reply_has_n
         reply, _ = project_chat.answer(database, USER, ARC, "can oyu give me that fragment?", take_session_id=TAKE)
         assert reply["answer"] == f"“{words}”"
         assert reply["row_metadata"]["coach_moment"] == {
-            "arc_id": ARC, "take_session_id": TAKE, "snippet_id": snippet, "practise": False,
+            "arc_id": ARC, "take_session_id": TAKE, "snippet_id": snippet, "practise": False, "playback": True,
         }
         database.project_rows.append({
             "role": "bot", "kind": "text", "body": reply["answer"], "metadata": reply["row_metadata"],
@@ -838,7 +841,7 @@ def test_fragment_follow_ups_use_the_quoted_recording_when_the_first_reply_has_n
     assert words in retry["answer"]
     assert "record your version" in retry["answer"]
     assert retry["row_metadata"]["coach_moment"] == {
-        **reply["row_metadata"]["coach_moment"], "practise": True,
+        **reply["row_metadata"]["coach_moment"], "practise": True, "playback": False,
     }
 
 
@@ -853,7 +856,7 @@ def test_fragment_request_marks_the_exact_older_clip_and_keeps_the_current_take(
     reply, _ = project_chat.answer(database, USER, ARC, "Can you play that fragment?", take_session_id="take-a5",
                                    review_focus={"step": "ideal"}, live_take_feedback=True)
     assert "The old opening." in reply["answer"]
-    assert reply["row_metadata"]["coach_moment"] == original
+    assert reply["row_metadata"]["coach_moment"] == {**original, "playback": True}
     assert reply["row_metadata"]["take_session_id"] == "take-a5"
     assert reply["row_metadata"]["live_take_feedback"] is True
 
@@ -903,7 +906,8 @@ def test_delivery_question_lets_the_speaker_choose_the_scoped_recording_after_re
              "client_created_at": "2026-11-18T09:12:00Z"}
         )
         project_chat.clear_cache()
-        llm.return_value = (SimpleNamespace(text="Your voice lifts naturally at the end.") if use_mic
+        llm.return_value = (SimpleNamespace(parsed={"answer": "Your voice lifts naturally at the end.",
+                                                   "correction": False, "wording": None, "playback": True}) if use_mic
                             else _config_result("You leave the decision room to land."))
         result, _ = project_chat.answer(
             database, USER, ARC, selection, take_session_id=TAKE,
@@ -915,8 +919,8 @@ def test_delivery_question_lets_the_speaker_choose_the_scoped_recording_after_re
             assert prompt["question"] == question
             assert prompt["spoken_words"] == question
             assert "natural rise and fall" in prompt["observations"]
-            assert "board" not in llm.call_args.kwargs["user"]
-            assert result["row_metadata"]["chat_voice_focus"] == {"source": "clip", "turn_id": clip}
+            assert prompt["project"]["audience"] == "The board"
+            assert result["row_metadata"]["chat_voice_focus"] == {"source": "clip", "turn_id": clip, "playback": True}
         else:
             assert "I am speaking to the board" in llm.call_args.kwargs["user"]
             assert question in llm.call_args.kwargs["user"]
@@ -938,9 +942,101 @@ def test_chat_recording_can_be_coached_in_an_owned_project_before_its_first_take
     )
     with patch("services.lounge_voice_reply.read_analysis", return_value={
         "transcript": question, "delivery": "pace: comfortable", "language": "pl",
-    }), patch("services.llm.chat_complete", return_value=SimpleNamespace(text="Mówisz w spokojnym, równym rytmie.")):
+    }), patch("services.llm.chat_complete", return_value=SimpleNamespace(parsed={
+        "answer": "Mówisz w spokojnym, równym rytmie.", "correction": False, "wording": None, "playback": False,
+    })):
         result, _ = project_chat.answer(database, USER, ARC, question, user_client_id=clip)
 
     assert result["answer"] == "Mówisz w spokojnym, równym rytmie."
     assert result["row_metadata"]["arc_id"] == ARC
     assert database.takes.sessions[ARC] == []
+
+
+def test_successive_recorded_endings_and_a_typed_revision_use_the_latest_attempt():
+    database = FakeDB(audience="The board", goal="Approve the plan")
+    first = "c89bbfcb-7efc-43b1-a06b-1fa99ea83df1"
+    second = "026e028d-0a39-45c5-944e-dd3663c5a18f"
+    versions = [
+        (first, "So these are all the tools we have, and that is it.", "Delivery across the whole passage: rushed"),
+        (second, "I recommend the pilot. Please approve the plan today.", "Delivery across the whole passage: comfortable pace"),
+    ]
+    recordings = {key: {"transcript": words, "delivery": cues} for key, words, cues in versions}
+
+    def read_analysis(db, user, turn, project):
+        assert (db, user, project) == (database, USER, ARC)
+        return recordings.get(turn)
+
+    def generate(**kwargs):
+        prompt = json.loads(kwargs["user"])
+        assert prompt["project"] == {"topic": "Board update", "audience": "The board", "goal": "Approve the plan"}
+        assert "The old opening." not in kwargs["user"]
+        assert "FOREIGN PROJECT SECRET" not in kwargs["user"]
+        current = prompt["spoken_words"]
+        if current == versions[0][1]:
+            assert prompt["recording_is_current_message"] is True
+            assert prompt["observations"] == versions[0][2]
+            line = "Please approve the pilot today."
+        else:
+            assert current == versions[1][1]
+            assert prompt["observations"] == versions[1][2]
+            assert any(row["words"] == versions[0][1] for row in prompt["recent_conversation"])
+            line = "Please approve the pilot so the team can start."
+        return SimpleNamespace(parsed={
+            "answer": "Give the board one clear decision to make.", "correction": True,
+            "wording": {"words": line, "delivery": None}, "playback": False,
+        })
+
+    with patch("services.lounge_voice_reply.read_analysis", read_analysis), \
+            patch("services.llm.chat_complete", autospec=True, side_effect=generate) as model:
+        for index, (turn, words, _cues) in enumerate(versions):
+            database.project_rows.append({
+                "client_id": turn, "kind": "text", "role": "user", "body": words,
+                "metadata": {"arc_id": ARC, "take_session_id": TAKE, "voice_clip": True},
+                "client_created_at": f"2026-11-18T09:1{index}:00Z",
+            })
+            project_chat.clear_cache()
+            reply, _ = project_chat.answer(database, USER, ARC, words, take_session_id=TAKE, user_client_id=turn)
+            assert "coach_moment" not in reply["row_metadata"]
+            assert reply["row_metadata"]["chat_voice_focus"] == {"source": "clip", "turn_id": turn, "playback": False}
+            assert reply["row_metadata"]["coach_wording"]["words"]
+            assert reply["row_metadata"]["coach_wording"]["take_session_id"] == TAKE
+            database.project_rows.append({
+                "client_id": f"reply-{index}", "kind": "text", "role": "bot", "body": reply["answer"],
+                "metadata": {**reply["row_metadata"], "reply_to_client_id": turn},
+                "client_created_at": f"2026-11-18T09:1{index}:30Z",
+            })
+
+        project_chat.clear_cache()
+        typed = "My new ending is: please approve the pilot so we can start."
+        reply, _ = project_chat.answer(database, USER, ARC, typed, take_session_id=TAKE, user_client_id="new-typed-turn")
+        prompt = json.loads(model.call_args.kwargs["user"])
+        assert prompt["question"] == typed
+        assert prompt["recording_is_current_message"] is False
+        assert prompt["spoken_words"] == versions[1][1]
+        assert reply["row_metadata"]["chat_voice_focus"]["playback"] is False
+
+
+def test_a_chat_recording_can_be_replayed_without_delivery_analysis():
+    from services import chat_voice_reference
+
+    clip = "fed26b2c-279c-4ee0-8639-03723fc07f14"
+    reference = chat_voice_reference.Reference("clip", "Odtwórz to nagranie", clip, {"transcript": "Proszę o zgodę."})
+    with patch("services.llm.chat_complete", return_value=SimpleNamespace(parsed={
+        "answer": "Oto to nagranie.", "correction": False, "wording": None, "playback": True,
+    })):
+        _text, metadata = chat_voice_reference.feedback(reference, "pl", USER, ARC)
+    assert metadata["chat_voice_focus"] == {"turn_id": clip, "source": "clip", "playback": True}
+
+
+def test_a_new_recording_with_missing_analysis_never_falls_back_to_an_older_clip():
+    from services import chat_voice_reference
+
+    first = "c89bbfcb-7efc-43b1-a06b-1fa99ea83df1"
+    current = "026e028d-0a39-45c5-944e-dd3663c5a18f"
+    rows = [{"client_id": turn, "role": "user", "kind": "text", "body": 'Try "the same line again"',
+             "metadata": {"arc_id": ARC, "voice_clip": True}} for turn in (first, current)]
+    older = {"transcript": "the same line again", "delivery": "quick pace"}
+    with patch("services.lounge_voice_reply.read_analysis", side_effect=lambda _db, _user, turn, _arc: older if turn == first else None):
+        reference = chat_voice_reference.resolve(None, USER, current, rows[-1]["body"], project=ARC, has_take=True, rows=rows)
+    assert reference.source == "missing"
+    assert reference.evidence is None

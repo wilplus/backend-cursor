@@ -56,6 +56,21 @@ Willfidence reference when sufficient data is available. Only qualitative
 observations reach the coach. Erasing the parent message erases the clip and
 its analysis.
 
+Under N694, a new saved chat recording is the current attempt even when the
+speaker simply records a different ending without asking an analysis question.
+Its own transcript and qualitative delivery observations reach the coach with
+the recent scoped exchange and the project's known audience and goal. Earlier
+recordings' cues remain attached to those versions. A typed revision is new
+wording with unheard delivery. Corrections supply a sayable line or a concrete
+exercise in the reply; unavailable vocal observations still allow wording help.
+The saved-recording route uses the same focused coaching model as a Take review.
+User mic messages retain their own playback. New coach replies set
+`coach_moment.playback` explicitly for Take references, or
+`chat_voice_focus.playback` for the exact saved chat clip. Original playback is
+shown when it explains an audible observation or answers a replay request.
+Wording-only replies retain the source and exercise without adding the original
+player. Generated AI audio and coach examples keep their own playback.
+
 Published pace corrections attach the Sniper and its exact words. The
 retry receipt names the coach reply that opened it. Its measured speech
 window and the same-passage check determine whether the pace improved.
