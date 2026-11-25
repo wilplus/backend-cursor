@@ -26,7 +26,14 @@ from dataclasses import dataclass, replace
 from typing import Any, Callable, Optional
 
 from services import coach_wording
-from services.prompts.coaching_evidence import DELIVERY_RULES, REFLECTION_RULES, WORDS_ONLY_RULES
+from services.prompts.coaching_evidence import (
+    DELIVERY_RULES,
+    REFLECTION_RULES,
+    REFRAME_RULES,
+    WORDS_ONLY_RULES,
+    stated_support,
+    support_evidence,
+)
 from services.speaking_coach_passages import (
     Evidence, Source, comparison_evidence, delivery_evidence, excerpts, ideal_document_text, practice_tags,
     rank_evidence, transcript_evidence,
@@ -1032,6 +1039,22 @@ def _brief_general_turn(route: str, question: str, history: Optional[list[dict]]
 
 
 
+def _turn_system(packet: ContextPacket, selected: tuple[Evidence, ...], question: str,
+                 search_question: str) -> str:
+    from services import speaker_memory
+    from services.speaking_coach_scope import asks_to_reframe_worry
+
+    preference = speaker_memory.prompt_block(packet.private_memory)
+    if packet.scope_status == "resolved" and preference:
+        preference += "Use the private note for coaching preferences only. The selected evidence supports talk-specific claims."
+    context = _render_context(packet, selected)
+    system = (_SYSTEM + "\n" + coach_wording.WORDING_RULES + "\n\n" + context + "\n" + preference
+              + _practice_prompt(packet, search_question, selected))
+    transcripts = [item.text for item in selected if item.source_type == "take_transcript" and not item.spoken_text]
+    system += support_evidence(stated_support(question, transcripts))
+    return system + "\n\n" + REFRAME_RULES if asks_to_reframe_worry(question) else system
+
+
 def answer(
     database: Any, user_id: Any, question: str, *,
     history: Optional[list[dict]] = None, app_config: Any = None,
@@ -1067,13 +1090,7 @@ def answer(
     if pace := _chat_pace_offer(database, user_id, search_question, target_language, selected,
                                 exact_snippet=packet.exact_snippet):
         return pace, packet.debug(selected_evidence=len(selected))
-    context_block = _render_context(packet, selected)
-    from services import speaker_memory
-    preference = speaker_memory.prompt_block(packet.private_memory)
-    if scoped and preference:
-        preference += "Use the private note for coaching preferences only. The selected evidence supports talk-specific claims."
-    system = (_SYSTEM + "\n" + coach_wording.WORDING_RULES + "\n\n" + context_block + "\n" + preference
-              + _practice_prompt(packet, search_question, selected))
+    system = _turn_system(packet, selected, question, search_question)
     messages = [{"role": "system", "content": system}]
     if not scoped:
         messages.extend(_prompt_history(history))

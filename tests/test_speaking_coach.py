@@ -446,6 +446,25 @@ def _reference(system, phrase):
                 if phrase in line and (match := re.match(r"- \[(E\d+);", line)))
 
 
+@pytest.mark.parametrize(("transcript", "expected"), [
+    ("Modlitwa daje mi oparcie przed rozmową. Jutro poproszę o szczerą opinię.", True),
+    ("Kolega powiedział: „To ważna rozmowa. Modlitwa daje mi oparcie.” Jutro poproszę o szczerą opinię.", False),
+])
+def test_only_the_speakers_own_support_is_highlighted_in_the_reflection(transcript, expected):
+    take = _named_take("Prośba o opinię", "opinion", 1, "2026-01-01", transcript)
+    database = _saved_projects(take)
+
+    def generate(**kwargs):
+        assert ("Speaker's explicitly stated source of support" in kwargs["system"]) is expected
+        return _result("Mówisz o tym, że jutro poprosisz o szczerą opinię.")
+
+    with patch("services.llm.chat_complete", generate), patch("services.llm.embed", return_value=None):
+        assert speaking_coach.answer(
+            database, USER, "Co zauważasz o mnie w nagraniu Prośba o opinię?",
+            app_config=_config(),
+        )
+
+
 def test_named_older_talk_uses_exact_take_and_hybrid_retrieval():
     from services.chat_query import _librarian
 

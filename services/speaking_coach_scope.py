@@ -49,6 +49,11 @@ _TAKE_NUMBER = re.compile(
 _SLIDE_NUMBER = re.compile(r"\b(?:slide|slajd\w*) (?:number |nr )?(\d{1,3})\b")
 _OPENING = re.compile(r"\b(?:opening|intro|introduction|beginning|poczat\w*|wstep\w*)\b")
 _ENDING = re.compile(r"\b(?:ending|closing|conclusion|at the end|call to action|zakoncz\w*|koncow\w*|na (?:samym )?koncu)\b")
+_REFRAME = re.compile(
+    r"\b(?:reframe|reapprais\w*|look at (?:it|this|that) differently|"
+    r"spojrzec (?:na (?:to|ten stres) )?inaczej|(?:inaczej spojrzec|przeformulowac obaw\w*))\b"
+)
+_WORRY = re.compile(r"\b(?:worr\w*|nervous|anxious|afraid|fear\w*|stres\w*|boje sie|obaw\w*|denerwuj\w*)\b")
 
 
 def normalize(text: str) -> str:
@@ -72,6 +77,11 @@ class TalkScope:
 def continues_passage(question: str, *, rehearsal_only: bool = False) -> bool:
     text = normalize(question)
     return bool(_REHEARSE_AGAIN.fullmatch(text) if rehearsal_only else _PASSAGE_CONTINUATION.search(text))
+
+
+def asks_to_reframe_worry(question: str) -> bool:
+    text = normalize(question)
+    return bool(_REFRAME.search(text) and _WORRY.search(text))
 
 
 def requested_passage(question: str) -> tuple[int | None, str]:
@@ -165,6 +175,8 @@ def resolve_scope(rows: list[dict], question: str, history: list[dict],
     if _RECENT_PAIR.search(text):
         return _request_for("", text), question
     if _ACROSS_PROJECTS.search(text):
+        return TalkScope(), question
+    if asks_to_reframe_worry(question) and not (_TAKE_NUMBER.search(text) or _LATEST.search(text) or _FIRST.search(text)):
         return TalkScope(), question
 
     talk = bool(_TALK.search(text) or _SLIDE_NUMBER.search(text))

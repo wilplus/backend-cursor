@@ -364,7 +364,7 @@
     "project_chat.delivery_evidence": {
       "kind": "static",
       "module": "coaching_evidence",
-      "sha256": "b37d1272d2ae4b5637161e95d8d89d13acbcd8b9401a4283150ddc6883f074ec"
+      "sha256": "b29a2c3556b9cf7f8c949dea3f0c5e4a859726860a36c5fd9cc01b6b18121c91"
     },
     "project_chat.later_feedback": {
       "kind": "source_ref",
@@ -384,12 +384,17 @@
     "project_chat.prompt_builder": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "ffd3158682f6fa02d010b1d237acb9d3f4c54d83e66a059617e4efa684baa3d5"
+      "sha256": "bac78a8ee7264a8fdd35a1fa2d7f05f5bec16a1b8961fc59d153d659bf4cd954"
     },
     "project_chat.reflection": {
       "kind": "static",
       "module": "coaching_evidence",
-      "sha256": "2aaeebd132501b1f27c52e2506027381ac68976ae1782e1d510454a99f6cada3"
+      "sha256": "85a2fc1c24a8222536499eef6ac989049a7c6212f2881ab844d9e2dc6393b7c7"
+    },
+    "project_chat.reframe": {
+      "kind": "static",
+      "module": "coaching_evidence",
+      "sha256": "b25e8d9cdc166b74028a0d1574444efa67d4af82401d62f3d8c689333245c538"
     },
     "project_chat.review": {
       "kind": "source_ref",
@@ -484,7 +489,7 @@
     "speaking_coach.delivery_evidence": {
       "kind": "static",
       "module": "coaching_evidence",
-      "sha256": "b37d1272d2ae4b5637161e95d8d89d13acbcd8b9401a4283150ddc6883f074ec"
+      "sha256": "b29a2c3556b9cf7f8c949dea3f0c5e4a859726860a36c5fd9cc01b6b18121c91"
     },
     "speaking_coach.practice": {
       "kind": "source_ref",
@@ -494,7 +499,12 @@
     "speaking_coach.reflection": {
       "kind": "static",
       "module": "coaching_evidence",
-      "sha256": "2aaeebd132501b1f27c52e2506027381ac68976ae1782e1d510454a99f6cada3"
+      "sha256": "85a2fc1c24a8222536499eef6ac989049a7c6212f2881ab844d9e2dc6393b7c7"
+    },
+    "speaking_coach.reframe": {
+      "kind": "static",
+      "module": "coaching_evidence",
+      "sha256": "b25e8d9cdc166b74028a0d1574444efa67d4af82401d62f3d8c689333245c538"
     },
     "speaking_coach.response": {
       "kind": "source_ref",

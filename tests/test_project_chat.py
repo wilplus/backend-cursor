@@ -536,6 +536,18 @@ def test_coaching_advice_contains_the_actual_line_and_uses_the_project_scope():
     }
 
 
+def test_a_delivery_reply_keeps_its_only_quoted_passage_when_the_model_omits_the_reference():
+    database = FakeDB(audience="zarząd", goal="zatwierdzić pilotaż")
+    words = "Proszę, zatwierdźcie dziś pilotaż."
+    database.snippets[TAKE][0].update(transcript=words, metrics={"wpm": 125, "pause_ratio": 0.27})
+    answer = f'Prośba „{words}” miała sporo miejsca, by wybrzmieć.'
+    reply = _config_result(answer)
+    reply.parsed = {"answer": answer, "moment": None}
+    with patch("services.llm.chat_complete", return_value=reply):
+        response, _ = project_chat.answer(database, USER, ARC, "Jak wybrzmiała moja prośba w tym nagraniu?")
+    assert response["row_metadata"]["coach_moment"]["snippet_id"] == "s2"
+
+
 @pytest.mark.parametrize(("question", "answer"), [
     ("How can I practise the ending?", "Give the request a short pause before today."),
     ("and some critics?", "Give the request a short pause before today."),

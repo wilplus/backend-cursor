@@ -33,7 +33,15 @@ from services.content_language import (
 )
 from services.llm_config import SPEC_PROJECT_CHAT, SPEC_PROJECT_CHAT_TAKE
 from services.lounge_messages import speaking_coach_feature
-from services.prompts.coaching_evidence import DELIVERY_RULES, PRACTICE_HANDOFF_RULES, REFLECTION_RULES, WORDS_ONLY_RULES
+from services.prompts.coaching_evidence import (
+    DELIVERY_RULES,
+    PRACTICE_HANDOFF_RULES,
+    REFLECTION_RULES,
+    REFRAME_RULES,
+    WORDS_ONLY_RULES,
+    stated_support,
+    support_evidence,
+)
 from services.lounge_clips import chat_moment_reference, requested_chat_intervention
 from services.speaking_coach import wants_practice
 from services.speaking_coach_passages import (
@@ -246,6 +254,10 @@ _RECORD_AGAIN = re.compile(
     re.IGNORECASE,
 )
 _ASKS_ABOUT_AUDIENCE = re.compile(r"\b(?:audience|listeners?|odbiorc\w*|słuchacz\w*)\b", re.IGNORECASE)
+_DELIVERY_REFLECTION = re.compile(
+    r"\b(?:how (?:did|does) [^?.!]{1,65} sound|jak (?:wybrzm\w*|brzm\w*))\b",
+    re.IGNORECASE,
+)
 _ASKS_FOR_EDIT = re.compile(r"\b(?:what would you change|co byś zmienił\w*|co mam zmienić)\b", re.IGNORECASE)
 _COACHING_QUESTION_START = re.compile(
     r"^(?:please|tell|help|show|explain|can|could|what|which|why|how|when|where|"
@@ -1729,6 +1741,11 @@ def _model_turn(
     system += "\n\n" + _SYSTEM + f"\nRequested tone: {_tone(question)}."
     if pending_setup_slot:
         system += "\n\n" + _SETUP_ANSWER_RULES
+    from services.speaking_coach_scope import asks_to_reframe_worry
+
+    if asks_to_reframe_worry(question):
+        system += "\n\n" + REFRAME_RULES
+    system += support_evidence(stated_support(question, [_text(context.current_take.get("transcript"))]))
     if practice_referent or _PASSAGE_BY_DESCRIPTION.search(question) or _WEAK_MOMENT_REQUEST.search(question) or wants_practice(question) or requested_chat_intervention(question):
         system += "\n\n" + PRACTICE_HANDOFF_RULES
     if review and (instruction := _review_instruction(context, state, question, review)):
@@ -2033,6 +2050,31 @@ def _reply_moment(context: ProjectChatContext, passages: dict[str, Evidence], pa
     return snippet, context.take_session_id
 
 
+def _discussed_delivery_source(context: ProjectChatContext, question: str,
+                               passages: dict[str, Evidence], parsed: dict) -> Source | None:
+    """Keep the source when a response quotes the only audible passage it can describe."""
+    if parsed.get("next_review_step") or not _DELIVERY_REFLECTION.search(question):
+        return None
+    candidates = [item for item in passages.values() if item.source_type == "delivery_cues"
+                  and item.sources[0].take_id == context.take_session_id and item.sources[0].snippet_id]
+    if len(candidates) != 1:
+        return None
+    item = candidates[0]
+    quote = normalize(item.spoken_text)
+    return item.sources[0] if len(quote.split()) >= 3 and f" {quote} " in f" {normalize(_model_answer(parsed))} " else None
+
+
+def _resolved_reply_moment(context: ProjectChatContext, question: str, passages: dict[str, Evidence],
+                           parsed: dict, anchor: Optional[dict], practice_referent: Optional[tuple[Source, str]],
+                           *, later_only: bool) -> tuple[Optional[str], str]:
+    snippet, take = _reply_moment(context, passages, parsed, anchor, practice_referent, later_only=later_only)
+    if not snippet and not anchor and not later_only:
+        source = _discussed_delivery_source(context, question, passages, parsed)
+        if source:
+            return source.snippet_id, source.take_id
+    return snippet, take
+
+
 def _answer_metadata(context: ProjectChatContext, question: str, passages: dict[str, Evidence],
                      parsed: Optional[dict], review: Optional[dict],
                      practice_referent: Optional[tuple[Source, str]] = None, *,
@@ -2050,7 +2092,9 @@ def _answer_metadata(context: ProjectChatContext, question: str, passages: dict[
     if wording:
         metadata[coach_wording.META] = wording
     next_step = None if later_only else parsed.get("next_review_step")
-    snippet, moment_take = _reply_moment(context, passages, parsed, anchor, practice_referent, later_only=later_only)
+    snippet, moment_take = _resolved_reply_moment(
+        context, question, passages, parsed, anchor, practice_referent, later_only=later_only,
+    )
     if anchor and next_step == "practise" and not snippet:
         metadata["review_destination"] = {"step": "practise"}
     if next_step == "ideal" and (anchor or context.ideal_text):
