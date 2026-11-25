@@ -11788,6 +11788,13 @@ class DatabaseService:
         """
         if not user_id or not messages:
             return []
+        # Will's rows with no chat and no Take go to the chat used last
+        # (N700 item 5). Never raises.
+        try:
+            from services.own_chats import stamp_unplaced
+            messages = stamp_unplaced(self, user_id, messages)
+        except Exception as error:  # noqa: BLE001 - the rows are placed by section instead
+            logger.info("own chat stamp skipped: %s", type(error).__name__)
         rows = [
             {
                 "user_id":           user_id,

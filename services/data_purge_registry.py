@@ -277,6 +277,9 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     # Account/profile and conversational product state.
     PurgeDependency("lounge", "lounge_messages", "user_id", "user", "delete",
                     "database_row", 60),
+    # A person's own chats (N700, migration 0535): their names and projects.
+    PurgeDependency("own_chats", "own_chats", "user_id", "user", "delete",
+                    "database_row", 60),
     # A coach's card about this person's goal (WIL-74) lives in the coach's
     # Lounge; it goes with the person it is about.
     PurgeDependency("lounge_about", "lounge_messages", "about_user_id", "user",

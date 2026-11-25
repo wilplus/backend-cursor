@@ -25,6 +25,8 @@ DOMAIN_MODULES = (
     # A model's API and its money (N528, N531, N583); its own line, so other
     # slices that add a module at the end of the tuple never conflict with it.
     "model_api",
+    # A person's own chats, one kind of chat (N700); its own line, as above.
+    "own_chats",
     "coach_preference", "coach_audit", "coach_words", "coach_plans",
     "coach_bubbles",
     "admin", "coaching", "canonical_publish", "auth_alias", "lab_recording",

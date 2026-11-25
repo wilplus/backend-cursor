@@ -26,7 +26,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -494,7 +494,8 @@ PLACE_ROUNDS = 5
 
 
 def placed_page(fetch: Any, limit: int, before: Optional[str], place: Optional[str],
-                rooms: Optional[Rooms] = None, chat: Optional[str] = None) -> dict:
+                rooms: Optional[Rooms] = None, chat: Optional[str] = None,
+                own: Optional[Callable[[dict], bool]] = None) -> dict:
     """The GET page for one place (N635), or every row with no place. Each
     message says its ``place``. ``fetch(limit, before)`` reads DESC, up to
     ``limit + 1`` rows, as ``get_lounge_messages_page``. A place reads older
@@ -503,14 +504,18 @@ def placed_page(fetch: Any, limit: int, before: Optional[str], place: Optional[s
     page never reads a row twice. ``chat``: only the rows of that host's
     chat (``rooms``: its Takes' rows and, for the speaking home, the
     person's own speaking rows); ``place`` leaves out the rows of Takes made
-    in a host's chat. Every row of a ``chat`` read says place "chat"."""
+    in a host's chat. Every row of a ``chat`` read says place "chat".
+    ``own``: only the rows of one of the person's own chats (N700,
+    services.own_chats.chat_of_row)."""
     rooms = rooms or Rooms()
 
     def keep(r: dict) -> bool:
+        if own is not None:
+            return own(r)
         if chat is not None:
             return rooms.in_chat(r, chat)
         return rooms.chat_of(r) is None and place_of(r) == place
-    if place is None and chat is None:
+    if place is None and chat is None and own is None:
         page = shape_lounge_page(fetch(limit, before), limit)
     else:
         kept: list[dict] = []
