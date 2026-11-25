@@ -423,8 +423,13 @@ def _with_voice(upload: dict, user_id: str, message: str, extra: dict) -> tuple[
 
 
 def reply(database: Any, user_id: str, chat_id: str, payload: Any, *,
-          recipe: dict, host_answers: int, conversation: Optional[list[dict]] = None) -> tuple[dict, int]:
-    """The visitor's answer. ``(body, status)`` in the shape the builder reads."""
+          recipe: dict, host_answers: int, conversation: Optional[list[dict]] = None,
+          preview: bool = False) -> tuple[dict, int]:
+    """The visitor's answer. ``(body, status)`` in the shape the builder reads.
+
+    ``preview`` is the host trying their own chat: the answer is shown at
+    once whoever answers for the chat, and no draft is kept.
+    """
     payload = payload if isinstance(payload, dict) else {}
     kind = str(payload.get("kind") or "text")
     upload = read_upload(kind, payload)
@@ -433,7 +438,7 @@ def reply(database: Any, user_id: str, chat_id: str, payload: Any, *,
     if upload.get("error"):
         return {"error": upload["error"]}, 200
     setup = setup_of(recipe, load_examples(database, user_id), host_answers)
-    act = reply_act(setup["who"], setup["care"], host_answers)
+    act = "send" if preview else reply_act(setup["who"], setup["care"], host_answers)
     if act == "none":
         return {"shown": False, "quiet": True, "reply": None}, 200
     if act == "wait":
