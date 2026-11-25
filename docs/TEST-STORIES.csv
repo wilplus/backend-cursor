@@ -2843,9 +2843,12 @@ O2  Will's unprompted message (no chat, no Take) goes to the chat the
 speaker used last; the speaker's own words and a Take's rows keep
 their place.
 O3  A chat turn sent from one of the speaker's own chats names it and
-makes it the chat used last; a chat that is not theirs names none.","O1 -> test_a_message_belongs_to_its_chat_and_older_ones_find_theirs
+makes it the chat used last; a chat that is not theirs names none.
+O4  A page of messages says, row by row, the chat each belongs to; with no
+own chats yet it is left as it was.","O1 -> test_a_message_belongs_to_its_chat_and_older_ones_find_theirs
 O2 -> test_will_s_unprompted_message_goes_to_the_chat_used_last
-O3 -> test_a_turn_names_only_the_speaker_s_own_chat",
+O3 -> test_a_turn_names_only_the_speaker_s_own_chat
+O4 -> test_a_page_says_each_row_s_chat",
 tests/test_owner_edits_use_current_processing_authority_postgres.py,Story,"As a speaker, I can save and reload my own words after accepting the current agreement, without joining the retired coaching loop.","O1 A committed edit reloads with the same Paragraph and revision.
 O2 Missing/stale agreement or a service block refuses the write.
 O3 Another owner cannot edit my project; strict F2 access stays closed.","O1 -> test_current_authority_saves_and_reloads_without_coaching_enrollment

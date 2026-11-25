@@ -70,6 +70,27 @@ def _read(database: Any, user_id: str) -> list[dict]:
                  .order("last_used_at", desc=True))
 
 
+def read_chats(database: Any, user_id: Any) -> list[dict]:
+    """The person's own chats as they are, without making any (a cheap read
+    for labelling a page of messages). [] when none or unreadable."""
+    try:
+        return _read(database, str(user_id))
+    except Exception as error:  # noqa: BLE001 - before migration 0536, or a hiccup
+        logger.info("own_chats unread: %s", type(error).__name__)
+        return []
+
+
+def label_page(messages: list[dict], chats: list[dict]) -> None:
+    """Each message says the own chat it belongs to (``own_chat_id``), so the
+    app shows a chat's messages from the one page it reads. Rows of a Take
+    that name only their Take fall to their section's chat. In place."""
+    if not chats:
+        return
+    for message in messages:
+        if isinstance(message, dict):
+            message["own_chat_id"] = chat_of_row(message, chats)
+
+
 def _insert(database: Any, row: dict) -> Optional[dict]:
     try:
         made = _rows(_table(database).insert(row))

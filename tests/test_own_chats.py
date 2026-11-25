@@ -11,9 +11,12 @@ OUTCOME
       their place.
   O3  A chat turn sent from one of the speaker's own chats names it and
       makes it the chat used last; a chat that is not theirs names none.
+  O4  A page of messages says, row by row, the chat each belongs to; with no
+      own chats yet it is left as it was.
 PROVES   O1 -> test_a_message_belongs_to_its_chat_and_older_ones_find_theirs
          O2 -> test_will_s_unprompted_message_goes_to_the_chat_used_last
          O3 -> test_a_turn_names_only_the_speaker_s_own_chat
+         O4 -> test_a_page_says_each_row_s_chat
 """
 from __future__ import annotations
 
@@ -73,6 +76,14 @@ class OwnChats(unittest.TestCase):
         self.assertEqual(coaching._with_own_chat({"arc_id": "arc-1"}, {"chat_id": "c"}),
                          {"arc_id": "arc-1", "chat_id": "c"})
         self.assertIsNone(coaching._with_own_chat(None, {}))
+
+    def test_a_page_says_each_row_s_chat(self):
+        page = [_row(chat_id="chat-new"), _row(role="bot", kind="walk_step", arc_id="arc-1"), _row(place="speaking")]
+        own_chats.label_page(page, CHATS)
+        self.assertEqual([m["own_chat_id"] for m in page], ["chat-new", "chat-talk", "chat-coach"])
+        bare = [_row(place="speaking")]
+        own_chats.label_page(bare, [])
+        self.assertNotIn("own_chat_id", bare[0])
 
 
 if __name__ == "__main__":

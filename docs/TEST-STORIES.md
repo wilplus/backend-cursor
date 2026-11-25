@@ -2473,6 +2473,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O1** A message written in a chat stays in it; a message written before N700 is read into its project's chat (by its project, or by its Take), else into the chat that carries on its old section.
 - **O2** Will's unprompted message (no chat, no Take) goes to the chat the speaker used last; the speaker's own words and a Take's rows keep their place.
 - **O3** A chat turn sent from one of the speaker's own chats names it and makes it the chat used last; a chat that is not theirs names none.
+- **O4** A page of messages says, row by row, the chat each belongs to; with no own chats yet it is left as it was.
 
 ### As a speaker, I can save and reload my own words after accepting the current agreement, without joining the retired coaching loop.
 

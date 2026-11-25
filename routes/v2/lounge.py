@@ -150,6 +150,9 @@ def v2_user_lounge_messages_get():
         from services.lounge_clips import enrich_page
         # Fresh links and the Ideal Text bubble's "new", read side by side
         # (founder 2026-10-18).
+        # Each row says its own chat (N700): one page serves every chat.
+        from services.own_chats import label_page, read_chats
+        label_page(page.get("messages") or [], read_chats(db, request.user_id))
         enrich_page(page, request.user_id, db,
                     resolve_snippet=_resolve_snippet_audio_url,
                     resolve_ref=resolve_playable_ref,
