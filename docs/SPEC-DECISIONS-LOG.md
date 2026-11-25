@@ -17951,3 +17951,9 @@ No rules page.
 In Speaking Model Calibration, a founder can listen to exact moments from their own Takes and from the existing blind Training Corpus queue. An inline Import audio step uses the same corpus upload and processing path. They can save multiple error or praise labels with their own spans, or a control, then draft or approve an intervention match for each label. Keep the source link and review permissions and remove examples when the source is erased. A corpus file has no retry outcome. The library is a record of human decisions for calibration, separate from any live picker rule, pooled learning or measured practice result.
 
 The rules: [AI voice in practice](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md).
+
+**N699 · Show listening and transcription in the chat composer** (founder, Take design Codex chat, 25 November 2026).
+
+The small chat mic gives visible feedback while it listens. After stopping, the composer shows that the recording is being transcribed until the words are ready to edit. If the recording is sent for delivery analysis, that wait appears in the conversation.
+
+The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
