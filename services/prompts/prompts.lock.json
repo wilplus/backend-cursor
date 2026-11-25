@@ -351,6 +351,16 @@
       "module": "coach_answer_drafts",
       "sha256": "29b84443b1ce8b65a04d1d1def1a477e5c1542e3c3119c7a3b410ea69d4e7b93"
     },
+    "project_chat.chat_attempt": {
+      "kind": "source_ref",
+      "module": "pending",
+      "sha256": "1f54b4a87497f989333de3108589914b9e8b0600035e0edc086d4ac39d028684"
+    },
+    "project_chat.chat_attempt_response": {
+      "kind": "source_ref",
+      "module": "pending",
+      "sha256": "d68853695c7efa4e6a1cf8ebb0d3cabe1c0702181cf36e9a3f3daad1472ed1b9"
+    },
     "project_chat.delivery_evidence": {
       "kind": "static",
       "module": "coaching_evidence",
@@ -371,25 +381,30 @@
       "module": "coaching_evidence",
       "sha256": "88196e12974d91a65398e2c21adb4a5abcdd79a67f879c74303ebe9471485f7b"
     },
+    "project_chat.prompt_builder": {
+      "kind": "source_ref",
+      "module": "pending",
+      "sha256": "fddca884dd951cec4bccbcc20bd7b616fe387fd68faff9ed0510888b00af18df"
+    },
     "project_chat.reflection": {
       "kind": "static",
       "module": "coaching_evidence",
-      "sha256": "a601b294b5d89d267a8bc02c2f40baee80878245bd0d58e6e23be7315bf4a7a4"
+      "sha256": "2aaeebd132501b1f27c52e2506027381ac68976ae1782e1d510454a99f6cada3"
     },
     "project_chat.review": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "086f24ab08ad2df2e5d225079fbcfbcec3bbde6e37dd27c5ea5c7dec004babaa"
+      "sha256": "cf901c7d0d2e6a301989edf87611fd1f4cd2ab3450476d603d360f651000a263"
     },
     "project_chat.system": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "75524c3d71efc1674a5608a4efc70dc1f590229aac85f056eea4a955489e6c58"
+      "sha256": "ccfbbf1b29e2ec2545b67aa301ed6f66c6469c9fbff2002fc54f4b8f58923cac"
     },
     "project_chat.wording": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "69d9581fc34150a034636a670cf915ee045f7a15cf322b98d573b5ad8d78485b"
+      "sha256": "c92bb662cfd189590c37e6771a6bbda2850afdd6cc469b15ad108b21a475eb66"
     },
     "project_chat.words_only": {
       "kind": "static",
@@ -451,6 +466,16 @@
       "module": "pending",
       "sha256": "0ed70e325034250a108d1361090f77abfb885f7963af986248de9f042c570a51"
     },
+    "speaking_coach.chat_attempt": {
+      "kind": "source_ref",
+      "module": "pending",
+      "sha256": "1f54b4a87497f989333de3108589914b9e8b0600035e0edc086d4ac39d028684"
+    },
+    "speaking_coach.chat_attempt_response": {
+      "kind": "source_ref",
+      "module": "pending",
+      "sha256": "d68853695c7efa4e6a1cf8ebb0d3cabe1c0702181cf36e9a3f3daad1472ed1b9"
+    },
     "speaking_coach.delivery_evidence": {
       "kind": "static",
       "module": "coaching_evidence",
@@ -464,7 +489,7 @@
     "speaking_coach.reflection": {
       "kind": "static",
       "module": "coaching_evidence",
-      "sha256": "a601b294b5d89d267a8bc02c2f40baee80878245bd0d58e6e23be7315bf4a7a4"
+      "sha256": "2aaeebd132501b1f27c52e2506027381ac68976ae1782e1d510454a99f6cada3"
     },
     "speaking_coach.response": {
       "kind": "source_ref",
@@ -484,7 +509,7 @@
     "speaking_coach.wording": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "69d9581fc34150a034636a670cf915ee045f7a15cf322b98d573b5ad8d78485b"
+      "sha256": "c92bb662cfd189590c37e6771a6bbda2850afdd6cc469b15ad108b21a475eb66"
     },
     "speaking_coach.words_only": {
       "kind": "static",

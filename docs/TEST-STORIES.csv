@@ -3465,7 +3465,9 @@ reload, without moving the active exchange.
 O9  A direct request to record again after Ideal Text offers the existing
 next-Take action.
 O10 A request for the same fragment retrieves the exact recording and
-words from the project even after a reply without an attached clip.","O1 -> test_context_is_bounded_to_current_project_and_carries_feedback_deck_ideal_text
+words from the project even after a reply without an attached clip.
+O11 Each new chat recording is coached as a new attempt using its own
+words and cues; a typed revision has no new vocal evidence.","O1 -> test_context_is_bounded_to_current_project_and_carries_feedback_deck_ideal_text
 O2 -> test_state_skips_known_audience_and_goal_and_asks_one_slot_at_a_time
 O3 -> test_tone_and_content_language_are_passed_to_the_single_generation
 O4 -> test_unknown_arc_fails_closed
@@ -3474,7 +3476,8 @@ O6 -> test_live_feedback_pairs_an_improvement_with_an_intervention_and_offers_th
 O7 -> test_topic_request_can_practise_a_words_only_fragment_after_ideal_text
 O8 -> test_practice_follow_up_can_refer_to_an_older_take
 O9 -> test_record_again_is_available_after_ideal_text
-O10 -> test_fragment_follow_ups_use_the_quoted_recording_when_the_first_reply_has_no_clip","Project Chat redesign, 2026-11-18; preserve the current-project processing boundary and the Feedback walk's record -> process -> Take loop. Project Chat contract tests. The fakes expose only one project at a time to make an accidental global thread read fail loudly.  The model is patched at the shared LLM wrapper so the tests assert the actual prompt/model path without making a provider call."
+O10 -> test_fragment_follow_ups_use_the_quoted_recording_when_the_first_reply_has_no_clip
+O11 -> test_successive_recorded_endings_and_a_typed_revision_use_the_latest_attempt","Project Chat redesign, 2026-11-18; preserve the current-project processing boundary and the Feedback walk's record -> process -> Take loop. Project Chat contract tests. The fakes expose only one project at a time to make an accidental global thread read fail loudly.  The model is patched at the shared LLM wrapper so the tests assert the actual prompt/model path without making a provider call."
 tests/test_project_deletion.py,Story,"As a speaker, I want Delete on a project to be a request I can cancel within 7 days, with no new Takes added meanwhile, so that I can change my mind and nothing new lands in a project about to go.","O1  Asking to delete my project creates a pending request; someone
 else's project answers ""not found"".
 O2  A project waiting to be deleted refuses a new Take, but if the lock
@@ -3551,6 +3554,9 @@ O2 -> test_the_setup_is_only_the_setup_fields
 O3 -> test_someone_elses_project_is_not_found","#1144 (founder 2026-10-16), then N257 (2026-10-29): the deck is the project's current one, updated inside the project."
 tests/test_project_tenant_isolation.py,Story,"As a speaker, I want my Take found only when the Take, the project and the owner all match, so that no one can read my Take by guessing ids.","O1  Looking up my Take with the right project but someone else as owner
 returns nothing, because all three ids are checked together.",O1 -> test_take_lookup_requires_take_project_and_owner_coordinates_together,
+tests/test_prompt_eval_outputs.py,Guard,The live grader sees the same wording and playback actions the speaker receives with the chat answer.,"Losing the conditional sentence inside a wording card, or treating
+a false, missing or string playback flag as a displayed player.","test_wording_conditions_remain_visible_to_the_grader
+test_only_a_strict_true_playback_flag_describes_a_player","If removed: Correct artifact replies can fail the evals, or unavailable audio can be described to the grader as available."
 tests/test_prompt_registry.py,Guard,"Every LLM prompt in services/prompts/ is hashed into prompts.lock.json, and the code matches the lockfile.","A prompt (or its builder logic) edited without regenerating the
 lockfile; the failure names the prompt ids that were added,
 removed or changed.",test_lockfile_matches_code,"If removed: A prompt can change without review and the speaker's feedback shifts silently. (The behavioural half, golden evals against the changed prompts, runs in the prompt-evals CI job.)"

@@ -44,6 +44,11 @@ exactly WHICH prompts a PR touches.
 The `master_doc_probe.py` pattern, generalized: deterministic checks
 first (code counts characters; LLMs don't), then a temperature-0
 semantic grader only where the rubric declares `semantic_intent`.
+The grader reads the answer together with its wording, intervention and
+readiness fields. A condition or exercise in its card satisfies that part
+of the response. A proposed next attempt remains distinct from a claim
+about the original recording. These checks preserve the case's stated
+requirements rather than requiring the same content twice in different fields.
 
 - Harness: `tests/evals/harness.py`
 - Adapters (golden input → real production function):
@@ -172,6 +177,19 @@ Use it for "we know, it's real, someone else owns the fix". Do **not**
 use it for a flaky case — that is what the retry above is for — and do
 not use it instead of loosening a rubric that is genuinely wrong; if
 the rubric is wrong, fix the rubric.
+
+## Saved chat recording cases
+
+The `project_chat` adapter also exercises the saved chat-recording route.
+An input `recording` supplies synthetic transcript and qualitative delivery
+analysis for the current message. History rows can carry their own `recording`
+and a bot row's `voice_focus` can refer to a prior row index. A read-only fixture
+client serves only those exact messages and analyses under the fixture speaker.
+The real production resolver, language helper, prompt, model and reply guards
+run unchanged. These cases test successive new attempts and typed revisions;
+they do not measure speech extraction or assert that fixture audio was heard.
+The output includes the selected voice source, whether it is the current
+message, the playback decision and, when requested, the actual wording card.
 
 ## 4. What's NOT gated yet (known gaps)
 
