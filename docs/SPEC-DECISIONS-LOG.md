@@ -17909,3 +17909,9 @@ The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/b
 Speaking Coach, project and member conversations use the same message stream and composer. In a hosted chat that accepts Takes, the host's messages and the speaker's Take feedback appear together, ordered by time. Answer the host and ask about the selected Take from that composer using the existing session and permissions. Choosing a different chat keeps the respective conversation history and draft scope. Start a new Take from a chat that accepts Takes using that chat's scope.
 
 The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N693 · Put the exercise and the words to say in the corrective reply** (founder, Speaking Coach Codex chat, 24 November 2026). Extends N686, N690 and N692 for guided retries.
+
+A pace correction puts the Sniper and the recorded line in the bubble. The highlighted chat mic submits the retry when stopped. A confirmed improvement can lead to a playable AI example for the next supported cue and another retry using the same mic.
+
+The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
