@@ -17945,3 +17945,9 @@ Keep the initial baseline, on-demand collection and occasional refresh in separa
 As an implementation evidence guard, store the invited context separately from the speaker’s actual felt energy for each answer. Coordination permits a local preview with a separate test database and storage. The decision applies only to the isolated test app.
 
 No rules page.
+
+**N698 · Build a speaking pattern library from Takes and Training Corpus** (founder, Codex calibration chat, 25 November 2026, “the error pattern praise pattern and error intervention pattern and praise intervention patter can be assigned there”). Extends N695.
+
+In Speaking Model Calibration, a founder can listen to exact moments from their own Takes and from the existing blind Training Corpus queue. An inline Import audio step uses the same corpus upload and processing path. They can save multiple error or praise labels with their own spans, or a control, then draft or approve an intervention match for each label. Keep the source link and review permissions and remove examples when the source is erased. A corpus file has no retry outcome. The library is a record of human decisions for calibration, separate from any live picker rule, pooled learning or measured practice result.
+
+The rules: [AI voice in practice](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md).
