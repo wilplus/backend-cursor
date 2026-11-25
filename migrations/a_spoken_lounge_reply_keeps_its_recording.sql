@@ -1,5 +1,3 @@
-BEGIN;
-
 CREATE TABLE IF NOT EXISTS public.lounge_voice_replies (
     message_id uuid PRIMARY KEY REFERENCES public.lounge_messages(id) ON DELETE CASCADE,
     content_type text CHECK (content_type IN ('audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav')),
@@ -59,5 +57,3 @@ CREATE OR REPLACE TRIGGER erase_redacted_lounge_voice_reply
     AFTER UPDATE OF chat_erased ON public.lounge_messages
     FOR EACH ROW WHEN (NEW.chat_erased AND NOT OLD.chat_erased)
     EXECUTE FUNCTION public.erase_redacted_lounge_voice_reply();
-
-COMMIT;
