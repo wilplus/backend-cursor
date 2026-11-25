@@ -571,3 +571,4 @@
 0533	a_spoken_lounge_reply_keeps_its_recording.sql
 0534	a_chat_retry_can_have_its_own_ai_example.sql
 0535	a_speaking_pattern_keeps_its_source_moment.sql
+0536	a_person_s_own_chats_are_one_kind.sql

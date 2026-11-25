@@ -119,26 +119,40 @@ def v2_user_lounge_messages_get():
             before = validate_before_cursor(request.args.get("before"))
             place = parse_place(request.args.get("place"))
             chat = parse_chat(request.args.get("chat"))
-            if place and chat:
-                raise LoungeValidationError("place and chat: one of them")
+            own_id = request.args.get("own") or None
+            if sum(bool(x) for x in (place, chat, own_id)) > 1:
+                raise LoungeValidationError("place, chat and own: one of them")
         except LoungeValidationError as ve:
             return jsonify({"code": "INVALID_INPUT", "error": str(ve)}), 400
 
         rooms = host_rooms(db, request.user_id)
         if chat is not None and chat not in rooms.chats:
             return jsonify({"code": "NOT_FOUND", "error": "Not found."}), 404
+        own = None
+        if own_id:
+            from services import own_chats
+            chats = own_chats.list_chats(db, request.user_id)
+            if own_id not in {str(c.get("id")) for c in chats}:
+                return jsonify({"code": "NOT_FOUND", "error": "Not found."}), 404
+            take_arcs = own_chats.take_projects(db, request.user_id)
+
+            def own(row, _chats=chats, _takes=take_arcs, _id=own_id):
+                return own_chats.chat_of_row(row, _chats, _takes) == _id
 
         from services.request_context import lap
         with lap("page"):
             page = placed_page(
                 lambda n, cursor: db.get_lounge_messages_page(request.user_id, limit=n, before=cursor),
-                limit, before, place, rooms, chat,
+                limit, before, place, rooms, chat, own,
             )
         from routes.v2.common import _resolve_snippet_audio_url
         from services.audio_ref_resolver import resolve_playable_ref
         from services.lounge_clips import enrich_page
         # Fresh links and the Ideal Text bubble's "new", read side by side
         # (founder 2026-10-18).
+        # Each row says its own chat (N700): one page serves every chat.
+        from services.own_chats import label_page, read_chats
+        label_page(page.get("messages") or [], read_chats(db, request.user_id))
         enrich_page(page, request.user_id, db,
                     resolve_snippet=_resolve_snippet_audio_url,
                     resolve_ref=resolve_playable_ref,

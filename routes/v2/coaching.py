@@ -21,7 +21,7 @@ import sentry_sdk
 from flask import jsonify, request
 
 import json
-from typing import Any
+from typing import Any, Optional
 
 from auth import optional_auth, require_auth
 from routes.v2.common import _resolve_snippet_audio_url
@@ -218,6 +218,8 @@ def _parse_chat_request(req) -> dict:
         "place": None,
         "project_id": None,
         "take_id": None,
+        # The speaker's own chat the turn is typed in (N700).
+        "own_chat": None,
     }
     if not is_multipart:
         body = req.get_json(silent=True) or {}
@@ -241,10 +243,12 @@ def _parse_chat_request(req) -> dict:
             if isinstance(context, dict) else {}
         place = body.get("place")
         parsed["place"] = place if isinstance(place, str) else None
+        parsed["own_chat"] = _own_chat_id(body.get("own_chat"))
         return parsed
 
     parsed["question"] = (req.form.get("question") or "").strip()
     parsed["project_id"], parsed["take_id"] = _project_coordinates(req.form)
+    parsed["own_chat"] = _own_chat_id(req.form.get("own_chat"))
     history_raw = req.form.get("history")
     if history_raw:
         try:
@@ -299,6 +303,32 @@ def _correlated_request_id(client_id: Any, request_id: Any) -> tuple[Any, bool]:
 def _take_exchange_scope(context):
     inside = context.get("take_exchange") if isinstance(context, dict) else None
     return {"take_exchange": inside} if isinstance(inside, bool) else {}
+
+
+def _own_chat_id(value) -> Optional[str]:
+    """The ``own_chat`` a turn names (N700), or None."""
+    return value if isinstance(value, str) and value else None
+
+
+def _own_chat_scope(transport, user_id) -> dict:
+    """The speaker's own chat the turn was typed in (N700): its rows name it,
+    and it becomes the chat used last. A chat that is not theirs names none."""
+    chat = transport.get("own_chat")
+    if not chat or not user_id:
+        return {}
+    from services import own_chats
+    try:
+        if not own_chats.owned(db, user_id, chat):
+            return {}
+        own_chats.touch(db, user_id, chat)
+    except Exception as error:  # noqa: BLE001 - the turn is placed by section instead
+        logger.info("own chat scope skipped: %s", type(error).__name__)
+        return {}
+    return {"chat_id": str(chat)}
+
+
+def _with_own_chat(scope, own: dict):
+    return {**(scope or {}), **own} if own else scope
 
 
 def _claim_project_scope(transport, context):
@@ -537,11 +567,12 @@ def v2_chat_query():
                     replay["persisted"] = False
                 return jsonify(replay), 200
 
+        own = _own_chat_scope(transport, request.user_id)
         if persist_thread and request.user_id:
             claim_id, terminal = claim_chat_turn(
                 db, request.user_id, turn_id, question,
                 user_created_at=user_created_at, place=transport["place"],
-                scope_metadata=_claim_project_scope(transport, presentation_context),
+                scope_metadata=_with_own_chat(_claim_project_scope(transport, presentation_context), own),
             )
             if terminal is not None:
                 # An early terminal result did not write a bot row. Keep the
@@ -573,7 +604,7 @@ def v2_chat_query():
                 persist_thread=persist_thread, user_client_id=turn_id,
                 user_created_at=user_created_at, intent=intent,
                 place=transport["place"], request_id=turn_id,
-                claim_id=claim_id, scope_metadata=scope)), 200
+                claim_id=claim_id, scope_metadata=_with_own_chat(scope, own))), 200
 
         return answer_chat(
             db, user_id=request.user_id, question=question, history=history,
