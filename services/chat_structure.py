@@ -1,11 +1,11 @@
-"""Named conversations under a person's built chat, and group lifecycle."""
+"""A person's built chat, its one conversation, and group lifecycle."""
 from typing import Any
 from uuid import UUID, uuid4
 
 from postgrest.exceptions import APIError
 
 DEFAULT: dict[str, Any] = {
-    "coach": "active", "builder": "active", "subchats": [],
+    "coach": "active", "builder": "active", "subchats": [],  # subchats: legacy rows, only erased on delete
     "published_chat": None, "main_chat_id": "main",
 }
 
@@ -17,6 +17,11 @@ def read(database, user_id: str) -> tuple[int, dict]:
         return 0, {**DEFAULT, "subchats": []}
     row = result.data[0]
     return row["revision"], {**DEFAULT, **row["document"]}
+
+
+def public(layout: dict) -> dict:
+    """What the app reads. Subchats are gone from it."""
+    return {key: value for key, value in layout.items() if key != "subchats"}
 
 
 def _words(value: Any, limit: int) -> str:
@@ -61,20 +66,12 @@ def change(layout: dict, body: dict) -> tuple[dict, list[str]] | None:
         if not published or layout["builder"] != "active":
             return None
         layout["published_chat"] = published
-    elif action == "add":
-        title = _words(body.get("title"), 100)
-        question = _words(body.get("question"), 500)
-        if not title or not question or len(rows) >= 30 or layout["builder"] != "active":
-            return None
-        if any(item["title"] == title and item["question"] == question for item in rows):
-            return layout, removed
-        rows.append({"id": str(uuid4()), "title": title, "question": question, "archived": False})
     elif not isinstance(section, str):
         return None
     elif section in ("coach", "builder"):
         return _change_parent(layout, section, action)
     else:
-        return _change_child(layout, section, action)
+        return None
     return layout, removed
 
 
@@ -86,24 +83,11 @@ def _change_parent(layout: dict, section: str, action: str) -> tuple[dict, list[
         return None
     layout[section] = state
     if section == "builder" and action == "delete":
+        # Subchats are gone from the app; any a person made earlier go with the chat.
         removed = [layout["main_chat_id"], *(row["id"] for row in layout["subchats"])]
         layout.update(subchats=[], published_chat=None, main_chat_id=str(uuid4()))
         return layout, removed
     return layout, []
-
-
-def _change_child(layout: dict, section: str, action: str) -> tuple[dict, list[str]] | None:
-    rows = layout["subchats"]
-    child = next((item for item in rows if item["id"] == section), None)
-    if not child or layout["builder"] != "active":
-        return None
-    if action in ("archive", "restore"):
-        child["archived"] = action == "archive"
-        return layout, []
-    if action == "delete":
-        rows.remove(child)
-        return layout, [child["id"]]
-    return None
 
 
 def update(database, user_id: str, body: Any) -> tuple[dict, int]:
@@ -121,7 +105,7 @@ def update(database, user_id: str, body: Any) -> tuple[dict, int]:
             "p_user": user_id, "p_expected": revision, "p_document": layout, "p_removed": removed,
         }).execute()
         if result.data is True:
-            return layout, 200
+            return public(layout), 200
     return {"code": "CHAT_STRUCTURE_CHANGED"}, 409
 
 
@@ -152,7 +136,7 @@ def delete_coach(database, user_id: str, projects: Any) -> tuple[dict, int]:
         "p_expected": revision, "p_projects": expected,
     }).execute()
     if result.data is True:
-        return read(database, user_id)[1], 200
+        return public(read(database, user_id)[1]), 200
     return {"code": "CHAT_STRUCTURE_CHANGED"}, 409
 
 
@@ -161,8 +145,7 @@ def section(layout: dict, section_id: str) -> dict | None:
         return None
     if section_id == layout["main_chat_id"]:
         return {"id": section_id}
-    return next((item for item in layout["subchats"]
-                 if item["id"] == section_id and not item["archived"]), None)
+    return None
 
 
 def turns(database, user_id: str, section_id: str) -> tuple[dict, int]:

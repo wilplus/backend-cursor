@@ -632,7 +632,7 @@ def v2_chats_structure():
 
     owner = str(request.user_id)
     if request.method == "GET":
-        return jsonify(chat_structure.read(db, owner)[1])
+        return jsonify(chat_structure.public(chat_structure.read(db, owner)[1]))
     payload, status = chat_structure.update(db, owner, request.get_json(silent=True))
     return jsonify(payload), status
 
@@ -672,6 +672,25 @@ def v2_chats_blank_setup_start():
         db, str(request.user_id), body, person)))
 
 
+@v2_bp.route("/chats/setup/suggest", methods=["POST"])
+@limiter.limit("60 per hour", scope="chats_blank_setup_suggest")
+@require_auth
+@phase1_provider_route
+def v2_chats_blank_setup_suggest():
+    """Will's first suggestions for a job typed in the builder's talk: what
+    people ask and the first taps. Nothing is kept (0 or 1 provider call)."""
+    from services import chat_suggestions
+    body = request.get_json(silent=True)
+    spec = " ".join(str((body or {}).get("spec") or "").split())[:chat_suggestions.MAX_SPEC] if isinstance(body, dict) else ""
+    if not spec:
+        return jsonify({"code": "INVALID_INPUT"}), 400
+
+    def work():
+        found, _calls = chat_suggestions.suggest(spec, user_id=str(request.user_id))
+        return jsonify({"taps": list(found["taps"][0])[:3], "hello": found["hello"][0]})
+    return _builder_or_404(work)
+
+
 @v2_bp.route("/chats/setup/models", methods=["GET"])
 @require_auth
 def v2_chats_blank_setup_models():
@@ -689,7 +708,9 @@ def v2_chats_blank_setup_models():
 def v2_chats_builder_reply(chat_id):
     """The chat builder's visitor try (services/chat_builder_reply.py).
 
-    JSON ``{text, kind, data?, mime?, name?}``. 200 is the shape the
+    JSON ``{text, kind, data?, mime?, name?}``. It answers from the chat
+    the host built (published by the talk, else the blank setup's recipe),
+    shows the answer at once and keeps no draft. 200 is the shape the
     screen reads: shown, reply, walk, held, quiet, wait, or error
     too-big, unreadable or too-long. 404 without the builder or a saved
     recipe, and the screen keeps its own preview. A recording is limited
@@ -702,23 +723,21 @@ def v2_chats_builder_reply(chat_id):
     if not assistants.on(db, user_id):
         return jsonify({"code": "NOT_FOUND", "error": "Not found."}), 404
     incoming = request.get_json(silent=True) or {}
-    section_id = incoming.get("section_id") if isinstance(incoming, dict) else None
-    recipe = chat_recipes.mine(db, user_id)
-    options = {}
-    if section_id is not None:
-        layout = chat_structure.read(db, user_id)[1]
-        branch = chat_structure.section(layout, section_id)
-        if branch is None:
-            return jsonify({"code": "NOT_FOUND"}), 404
-        recipe = recipe or layout.get("published_chat")
-        if recipe and branch.get("question"):
-            recipe = {**recipe, "questions": [{"q": branch["question"]}], "taps": []}
-        options["conversation"] = chat_structure.read_turns(db, user_id, section_id, limit=6)
+    layout = chat_structure.read(db, user_id)[1]
+    # The chat the host built by talking, else the older blank-setup recipe.
+    recipe = layout.get("published_chat") or chat_recipes.mine(db, user_id)
     if not recipe:
         return jsonify({"code": "NOT_FOUND", "error": "Not found."}), 404
+    options = {}
+    section_id = incoming.get("section_id") if isinstance(incoming, dict) else None
+    if section_id is not None:
+        if chat_structure.section(layout, section_id) is None:
+            return jsonify({"code": "NOT_FOUND"}), 404
+        options["conversation"] = chat_structure.read_turns(db, user_id, section_id, limit=6)
+    # The host is the one trying: the answer shows at once and nothing is kept.
     body, status = chat_builder_reply.reply(
         db, user_id, str(chat_id), incoming,
-        recipe=recipe, host_answers=chat_replies.own_answers(db, user_id), **options)
+        recipe=recipe, host_answers=chat_replies.own_answers(db, user_id), preview=True, **options)
     return jsonify(body), status
 
 

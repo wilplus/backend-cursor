@@ -205,6 +205,15 @@ class ChatBuilderReplyTest(unittest.TestCase):
             held["_db"].client.table("chat_reply_drafts").select("status").execute().data[0]["status"],
             "sent")
 
+    def test_the_host_trying_their_own_chat_sees_the_answer_and_keeps_no_draft(self):
+        database = _Db()
+        with patch.object(reply, "complete", lambda *_a: "Ask about the spot."):
+            body, status = reply.reply(
+                database, HOST, "own-abc", {"text": "It itches.", "kind": "text"},
+                recipe=_recipe(who="shadow", sensitive=True), host_answers=0, preview=True)
+        self.assertEqual((status, body), (200, {"shown": True, "reply": "Ask about the spot."}))
+        self.assertEqual(database.client.table("chat_reply_drafts").select("*").execute().data, [])
+
     def test_a_score_or_a_feeling_is_removed_and_a_huge_file_is_refused(self):
         self.assertEqual(strip_person_scores("You are an 8/10. Score is 7. Try this."),
                          "You are an. Try this.")
@@ -331,6 +340,27 @@ class ChatBuilderReplyRouteTest(unittest.TestCase):
             "/v2/chats/not.ok/reply", json={"text": "Hi", "kind": "text"},
             headers={"Authorization": "Bearer t"})
         self.assertEqual(bad.status_code, 404)
+
+    def test_a_chat_built_by_talking_answers_without_the_older_recipe(self):
+        published = {"name": "Hair", "spec": "Trichologist", "send": ["text"], "who": "shadow",
+                     "hello": "Show me.", "line": "", "taps": [], "questions": []}
+        layout = {**chat_structure.DEFAULT, "published_chat": published}
+        with patch("services.chat_recipes.mine", return_value=None), \
+                patch("services.chat_structure.read", return_value=(1, layout)):
+            got = self.client.post(
+                "/v2/chats/own-abc/reply", json={"text": "It itches.", "kind": "text"},
+                headers={"Authorization": "Bearer t"})
+        self.assertEqual(got.get_json(), {"shown": True, "reply": "Use a mild wash."})
+
+    def test_a_first_suggestion_for_a_typed_job_is_not_kept(self):
+        got = self.client.post(
+            "/v2/chats/setup/suggest", json={"spec": "Speaking coach"},
+            headers={"Authorization": "Bearer t"})
+        self.assertEqual(got.status_code, 200)
+        self.assertEqual(got.get_json()["taps"], ["Practise a talk", "Get ready for a pitch", "Answer a hard question"])
+        empty = self.client.post("/v2/chats/setup/suggest", json={"spec": " "},
+                                 headers={"Authorization": "Bearer t"})
+        self.assertEqual(empty.status_code, 400)
 
     def test_no_recipe_keeps_the_screens_preview(self):
         with patch("services.chat_recipes.mine", return_value=None):
