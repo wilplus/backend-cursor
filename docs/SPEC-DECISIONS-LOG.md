@@ -17935,3 +17935,9 @@ The rules: [AI voice in practice](https://github.com/wilplus/frontend-cursor/blo
 3. **Test answers from the chat as built.** The reply route reads the chat the talk published, else the older blank-setup recipe. The host is the one trying, so the answer shows at once and no draft is kept for them to send. Changing the first taps in Settings saves the chat again.
 
 No migration in this entry. No rules page beyond the one-line changes in the frontend [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N697 · Build a speaking pattern library from Takes and Training Corpus** (founder, Codex calibration chat, 25 November 2026, “the error pattern praise pattern and error intervention pattern and praise intervention patter can be assigned there”). Extends N695.
+
+In Speaking Model Calibration, a founder can listen to exact moments from their own Takes and from the existing blind Training Corpus queue. They can save multiple error or praise labels with their own spans, or a control, then draft or approve an intervention match for each label. Keep the source link and review permissions and remove examples when the source is erased. A corpus file has no retry outcome. The library is a record of human decisions for calibration, separate from any live picker rule, pooled learning or measured practice result.
+
+The rules: [AI voice in practice](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md).
