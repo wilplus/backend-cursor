@@ -17915,3 +17915,9 @@ The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/b
 A pace correction puts the Sniper and the recorded line in the bubble. The highlighted chat mic submits the retry when stopped. A confirmed improvement can lead to a playable AI example for the next supported cue and another retry using the same mic.
 
 The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N694 · Coach the latest attempt and use reply playback when it helps** (founder, Take design Codex chat, 25 November 2026). Extends N683, N690 and N693.
+
+Each newly recorded attempt is heard with its own words, delivery evidence and conversation context. The coach answers as a public-speaking coach and gives a concrete exercise with each correction. User mic messages keep playback. A coach reply includes source playback when it explains a specific audible moment or the speaker asks to hear it. Wording corrections keep their exercise and proposal together.
+
+The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
