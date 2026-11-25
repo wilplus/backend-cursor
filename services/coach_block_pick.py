@@ -1,5 +1,5 @@
 """The blind "pick the most confident", gone from the app (founder,
-25 November 2026, N701): no sheet is sampled or answered any more. Only its
+25 November 2026, N702): no sheet is sampled or answered any more. Only its
 ledger stays, over the answers already given.
 
 Was: the blind "pick the most confident" (founder 2026-10-01, C5-b; Phase 8 of

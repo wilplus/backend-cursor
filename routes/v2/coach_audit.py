@@ -103,7 +103,7 @@ def v2_coach_clear_blind_line(line):
 
 
 # ── V4's blind sheet (B1.8; migration 0453). "Which sounds surer" (B1.9) and the
-#    blind block pick are gone from the app (N701); their answers stay readable. ──
+#    blind block pick are gone from the app (N702); their answers stay readable. ──
 
 @v2_bp.route("/coach/v4-moment-picks", methods=["GET"])
 @require_admin_or_coach

@@ -57,7 +57,7 @@ def tasks(database: Any, coach_id: str, *, is_coach: bool, moments_waiting: Call
     from services import model_coming
     if not model_coming.on(database, coach_id):
         return {"tasks": [], "coming": []}
-    # "Images, coming" is no longer listed here (N701): it trains nothing.
+    # "Images, coming" is no longer listed here (N702): it trains nothing.
     coming: list = []
     if not is_coach:
         return {"tasks": [], "coming": coming}

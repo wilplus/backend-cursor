@@ -1,7 +1,7 @@
-"""The founder's labels as the golden set for both pickers (N701).
+"""The founder's labels as the golden set for both pickers (N702).
 
 The founder labels moments in the Pattern Library, on their own app Takes
-and on Training Corpus clips (``speaking_pattern_examples``). Until N701
+and on Training Corpus clips (``speaking_pattern_examples``). Until N702
 nothing read those labels. This read lines each label on an app Take up
 against what the app actually served on that Take, and counts agreement.
 It changes nothing that is served: it is a founder-only report.

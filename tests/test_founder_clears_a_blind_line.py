@@ -10,7 +10,7 @@ PROVES   O1 -> FounderClearsABlindLineTests::test_a_cleared_item_is_never_shown_
 WHY      Founder 2026-10-20: the ⋯ on Do you hear it? and Pick the moment
          for feedback ("New ones come next week. Answers already given
          stay."); 0482. Pick the most confident and Which sounds surer are
-         gone (N701).
+         gone (N702).
 """
 from __future__ import annotations
 

@@ -17970,7 +17970,13 @@ The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/b
 
 The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [Principles](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/principles.md).
 
-**N701 · Training keeps only what feeds the two pickers** (founder, the Claude Code chat, 25 November 2026: “the essence on which the whole product is built is the moment picker function and the intervention picker function”, “strip out all that is not necessary … tighten the pipes … brutally but not recklessly”; then, on the three choices put to him, “Cut 2, keep picker ones”, “Cut the note and switch only”, “Golden set for both”). Narrows N642 item 6 and N695.
+**N701 · Keep archived chats out of the active sidebar** (founder, Codex chat, 25 November 2026: “when smth is archived it disappears form the left menu too!”). Applies N14 and the existing chat archive actions to the flat sidebar in N700.
+
+After a successful archive, remove the matching row from the active sidebar immediately and keep it hidden on reload. The existing restore actions bring the row back with its history.
+
+The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N702 · Training keeps only what feeds the two pickers** (founder, the Claude Code chat, 25 November 2026: “the essence on which the whole product is built is the moment picker function and the intervention picker function”, “strip out all that is not necessary … tighten the pipes … brutally but not recklessly”; then, on the three choices put to him, “Cut 2, keep picker ones”, “Cut the note and switch only”, “Golden set for both”). Narrows N642 item 6 and N695.
 
 1. **Two blind coach sheets go from the app:** “Pick the most confident” (C5-b) and “Which sounds surer” (B1.9). Neither trained anything; the first fed only the ledger, the second only stored preference pairs (M10). Their routes, screens and queue rows are gone and no new sheet is made. Answers already given stay in the database, the ledger still reads the block picks, and a withdrawal still erases both.
 2. **The two picker sheets stay:** “Pick the moment for feedback” is the golden set the V4 moment picker's exit gate needs, and “Do you hear it?” validates the error detectors that choose an intervention. “Moments to answer” stays: every moment a speaker meets still reaches a coach.

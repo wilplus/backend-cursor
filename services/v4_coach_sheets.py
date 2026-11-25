@@ -14,7 +14,7 @@ answers alone are the golden set (QG4 B); "None needs it" from both is
 agreement (V18 A).
 
 B1.9 "WHICH SOUNDS SURER" is gone from the app (founder, 25 November 2026,
-N701): it trained nothing (M10). Answers already given stay readable and are
+N702): it trained nothing (M10). Answers already given stay readable and are
 erased on withdrawal (``pair_consent``); no new pair is made.
 
 BLIND (BLIND COACH, AC-9). A sheet carries words, audio and letters only.

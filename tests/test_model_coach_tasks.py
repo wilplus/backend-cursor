@@ -7,7 +7,7 @@ OUTCOME
   O1  GET /v2/models/coach-tasks lists "Moments to answer", "Do you hear
       it?" and "Pick the moment for feedback", each with this coach's
       waiting count as the panel counts it and where it opens; nothing is
-      listed as coming (N701).
+      listed as coming (N702).
   O2  Reading it fills no line and answers nothing; a line that cannot be
       read waits 0.
   O3  Someone who is not a coach, or has neither ring, gets empty lists,

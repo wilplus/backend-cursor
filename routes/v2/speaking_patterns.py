@@ -62,7 +62,7 @@ def v2_speaking_pattern_library():
 @v2_bp.route(_ROOT + "/golden", methods=["GET"])
 @require_founder
 def v2_speaking_pattern_golden():
-    """Your labels against what both pickers served (N701): a report only."""
+    """Your labels against what both pickers served (N702): a report only."""
     from services import picker_golden
     return _json(picker_golden.report(db, str(request.user_id)))
 

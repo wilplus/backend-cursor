@@ -1006,7 +1006,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 *Why:* Founder 2026-10-19, N80 (D4, D7), approved two-phone prototype https://claude.ai/artifact/APk56PLZt6o6Cx9qUMKkuk. Founder 2026-10-18, N77 (contract 35g-6, superseding N48.3 Q11 A's earlier-Take fallback), landed with N95 on 2026-10-21; its links name the word's Take (founder, 2026-10-21).
 
-### As the founder, I want the coach panel's blind error audit to stay blind and answered once, so that learning never leaks into what coaches see. (The block pick is gone from the app, N701.)
+### As the founder, I want the coach panel's blind error audit to stay blind and answered once, so that learning never leaks into what coaches see. (The block pick is gone from the app, N702.)
 
 `tests/test_coach_panel_learning.py` · Story
 
@@ -1611,7 +1611,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O1** A cleared item is never shown again.
 - **O2** A line cleared this week does not refill before next week, on each of the two lines still in the app.
 
-*Why:* Founder 2026-10-20: the ⋯ on Do you hear it? and Pick the moment for feedback ("New ones come next week. Answers already given stay."); 0482. Pick the most confident and Which sounds surer are gone (N701).
+*Why:* Founder 2026-10-20: the ⋯ on Do you hear it? and Pick the moment for feedback ("New ones come next week. Answers already given stay."); 0482. Pick the most confident and Which sounds surer are gone (N702).
 
 ### As the founder, I want the golden set I judge to be drawn only from moments that real, blind, independent listeners labelled, so that the evaluation is measured against the same labels the app learns from (N111, B2).
 
@@ -2241,7 +2241,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 
 `tests/test_model_coach_tasks.py` · Story
 
-- **O1** GET /v2/models/coach-tasks lists "Moments to answer", "Do you hear it?" and "Pick the moment for feedback", each with this coach's waiting count as the panel counts it and where it opens; nothing is listed as coming (N701).
+- **O1** GET /v2/models/coach-tasks lists "Moments to answer", "Do you hear it?" and "Pick the moment for feedback", each with this coach's waiting count as the panel counts it and where it opens; nothing is listed as coming (N702).
 - **O2** Reading it fills no line and answers nothing; a line that cannot be read waits 0.
 - **O3** Someone who is not a coach, or has neither ring, gets empty lists, not an error.
 
@@ -2710,7 +2710,7 @@ golden eval set. Do not edit by hand: change the test or the eval, then run the 
 - **O2** On an error label, a served exercise and a chosen tool agree, and so do none and none; one without the other differs. The exercise and the tool are listed side by side, never mapped by guess.
 - **O3** Training Corpus labels are counted, not compared: they have no walk.
 
-*Why:* N701: the labels were saved and nothing read them.
+*Why:* N702: the labels were saved and nothing read them.
 
 ### As a speaker, I want each spoken piece attached to the right paragraph of my Ideal Text (slide first, then span, never a guess), so that feedback lands on the paragraph I actually said. (Ideal Text -> feedback: an item with no paragraph is attached to nothing.)
 

@@ -1,7 +1,7 @@
 """
 STORY    As the founder, I want the coach panel's blind error audit to stay
          blind and answered once, so that learning never leaks into what
-         coaches see. (The block pick is gone from the app, N701.)
+         coaches see. (The block pick is gone from the app, N702.)
 OUTCOME
   O1  An audit item takes one answer, once: a second answer is 409, a value
       outside yes/no/cant_tell is 400.

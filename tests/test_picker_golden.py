@@ -14,7 +14,7 @@ OUTCOME
 PROVES   O1 -> test_moment_agreement_follows_what_the_take_showed
          O2 -> test_intervention_agreement_is_served_against_chosen
          O3 -> test_corpus_labels_are_counted_not_compared
-WHY      N701: the labels were saved and nothing read them.
+WHY      N702: the labels were saved and nothing read them.
 """
 from services.picker_golden import compare
 
