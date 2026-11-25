@@ -712,6 +712,7 @@ def test_missing_feedback_uses_one_relevant_library_exercise():
             db, USER, "What exercise can I try for rushing in Campus Pitch?", app_config=_config(),
         )
     assert result is not None and "Pause after your request." in result[0]["answer"]
+    assert "When do you tend to speed up" in result[0]["answer"]
 
 
 

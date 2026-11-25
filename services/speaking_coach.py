@@ -1040,7 +1040,7 @@ def _brief_general_turn(route: str, question: str, history: Optional[list[dict]]
 
 
 def _turn_system(packet: ContextPacket, selected: tuple[Evidence, ...], question: str,
-                 search_question: str) -> str:
+                 practice_prompt: str) -> str:
     from services import speaker_memory
     from services.speaking_coach_scope import asks_to_reframe_worry
 
@@ -1049,10 +1049,18 @@ def _turn_system(packet: ContextPacket, selected: tuple[Evidence, ...], question
         preference += "Use the private note for coaching preferences only. The selected evidence supports talk-specific claims."
     context = _render_context(packet, selected)
     system = (_SYSTEM + "\n" + coach_wording.WORDING_RULES + "\n\n" + context + "\n" + preference
-              + _practice_prompt(packet, search_question, selected))
+              + practice_prompt)
     transcripts = [item.text for item in selected if item.source_type == "take_transcript" and not item.spoken_text]
     system += support_evidence(stated_support(question, transcripts))
     return system + "\n\n" + REFRAME_RULES if asks_to_reframe_worry(question) else system
+
+
+def _finish_catalogue_practice(answer: str, question: str, language: str, practice_prompt: str) -> str:
+    if not practice_prompt or "?" in answer or not wants_practice(question) or "rushing" not in practice_tags(question):
+        return answer
+    follow_up = ("Kiedy najczęściej zdarza Ci się mówić szybciej lub przechodzić od razu do kolejnej myśli?"
+                 if language == "pl" else "When do you tend to speed up or jump straight to your next point?")
+    return f"{answer} {follow_up}"
 
 
 def answer(
@@ -1090,7 +1098,8 @@ def answer(
     if pace := _chat_pace_offer(database, user_id, search_question, target_language, selected,
                                 exact_snippet=packet.exact_snippet):
         return pace, packet.debug(selected_evidence=len(selected))
-    system = _turn_system(packet, selected, question, search_question)
+    practice_prompt = _practice_prompt(packet, search_question, selected)
+    system = _turn_system(packet, selected, question, practice_prompt)
     messages = [{"role": "system", "content": system}]
     if not scoped:
         messages.extend(_prompt_history(history))
@@ -1163,6 +1172,7 @@ def answer(
         route, packet.cache_hit, packet.db_reads, len(selected), call_count,
         debug["model_duration_ms"], retrieval_ms,
     )
+    clean = _finish_catalogue_practice(clean, question, target_language, practice_prompt)
     reply = _practisable_payload(clean, parsed, question=question, language=target_language, selected=selected)
     if scoped and (focus := _recording_focus(parsed, selected, packet.exact_snippet)):
         from services.chat_practice import RECORDING_FOCUS
