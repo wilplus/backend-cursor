@@ -83,6 +83,10 @@ are comments. File name = surface name (`say_it_stronger.jsonl`).
  "notes": "free-form PM commentary; ignored by the harness"}
 ```
 
+The Project Chat and Speaking Coach adapters supply read-only authorization
+fixtures for their synthetic speaker. The production authority service checks
+those fixtures under the enforced mode during live runs.
+
 Fields:
 
 | field | required | meaning |

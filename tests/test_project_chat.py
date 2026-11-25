@@ -683,7 +683,20 @@ def test_a_general_improvement_question_cites_the_published_tempo_piece(monkeypa
     assert reply["row_metadata"]["chat_practice"] == {"tool": "sniper", "words": words, "reading": "rushed"}
 
 
-def test_how_to_fix_the_reviewed_passage_ignores_an_offer_from_another_take(monkeypatch):
+def test_coaching_eval_fixture_reads_only_its_authorised_recordings(monkeypatch):
+    from services.processing_authorization import ProcessingAuthorizationError
+    from services.speaker_lookup import _takes_in_force
+    from tests.evals.surfaces import _synthetic_chat_client
+
+    monkeypatch.setenv("PLF1_PROCESSING_AUTHORIZATION_MODE", "enforce")
+    database = SimpleNamespace(client=_synthetic_chat_client(USER))
+    assert _takes_in_force(database, [{"id": TAKE, "user_id": USER}]) == {TAKE}
+    with pytest.raises(ProcessingAuthorizationError):
+        _takes_in_force(database, [{"id": "foreign-take", "user_id": "another-speaker"}])
+
+
+@pytest.mark.parametrize("question", ["How can I fix this?", "What is the weakest part of this fragment?"])
+def test_how_to_fix_the_reviewed_passage_ignores_an_offer_from_another_take(monkeypatch, question):
     from services import chat_practice
 
     database = FakeDB()
@@ -701,12 +714,20 @@ def test_how_to_fix_the_reviewed_passage_ignores_an_offer_from_another_take(monk
     monkeypatch.setattr("services.tempo_stretch.pick_for_take", lambda *_: {"index": 0, "reading": "rushed"})
 
     reply, _ = project_chat.answer(
-        database, USER, ARC, "How can I fix this?", take_session_id=TAKE,
+        database, USER, ARC, question, take_session_id=TAKE,
         review_focus={"step": "feedback", "snippet_id": "s2"},
     )
     assert reply["row_metadata"]["coach_moment"]["take_session_id"] == TAKE
     assert reply["row_metadata"]["coach_moment"]["snippet_id"] == "s2"
     assert reply["row_metadata"]["chat_practice"]["words"] == database.snippets[TAKE][0]["transcript"]
+    database.snippets[TAKE].append({"id": "unrelated", "transcript": "An unrelated fast moment."})
+    monkeypatch.setattr("services.tempo_stretch.pick_for_take", lambda *_: {"index": 1, "reading": "rushed"})
+    with patch("services.llm.chat_complete", return_value=_config_result("Let's keep the request in one sentence.")):
+        reply, _ = project_chat.answer(
+            database, USER, ARC, question, take_session_id=TAKE,
+            review_focus={"step": "feedback", "snippet_id": "s2"},
+        )
+    assert reply["row_metadata"].get("coach_moment", {}).get("snippet_id") != "unrelated"
 
 
 @pytest.mark.parametrize("model_asks", [True, False])

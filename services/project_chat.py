@@ -1015,7 +1015,10 @@ def _pace_offer(database, context: ProjectChatContext, state: ProjectChatState, 
         if not cited and not anchor:
             return None
     elif _WEAK_MOMENT_REQUEST.search(question):
-        cited = _practice_referent(context, question, review)
+        anchor = _dict(_dict(review).get("anchor")) if _SAME_MOMENT.search(question) else {}
+        if anchor.get("step") == "ideal":
+            return None
+        cited = None if anchor else _practice_referent(context, question, review)
     else:
         return None
     source = cited[0] if cited else None
