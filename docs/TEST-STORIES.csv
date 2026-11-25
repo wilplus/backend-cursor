@@ -4029,6 +4029,13 @@ sent; no language is forced without a hint.
 O2  The returned text is trimmed, malformed word times are dropped, the
 duration is in ms, and the clip's seconds are recorded as usage.","O1 -> test_the_filename_is_fixed_up_to_its_lowercase_extension
 O2 -> test_the_result_is_cleaned_and_its_usage_recorded",tests/test_snippet_transcription.py covers a missing client.
+tests/test_speaker_insights.py,Story,"As a speaker, I want to ask Will what he has noticed about me and get it in words, worked out from all my Takes and messages, only when I ask (founder, N691 item 4).","O1  An ask for insights is answered from Will's note, what Will said after
+Takes whose processing authorization is in force, and the speaker's
+own messages; a Take not in force is left out.
+O2  A question about one Take, or any other message, is not claimed.
+O3  A reply that puts a number on the speaker never reaches them.","O1 -> test_an_ask_is_answered_from_the_authorized_record
+O2 -> test_other_questions_are_not_claimed
+O3 -> test_a_number_about_the_speaker_is_never_sent",
 tests/test_speaker_memory.py,Guard,"Will learns about each speaker: every answer to ""Did this help?"" and every Take's outcome is kept, a private note is rewritten from them, and Will reads that note in the chat and in the summary after a Take.","C1  an answer that is no longer kept as an event, or no longer rewrites the note
 C2  the chat no longer handing the note to Will
 C3  the summary after a Take no longer hearing the note

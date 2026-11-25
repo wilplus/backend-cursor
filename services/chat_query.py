@@ -1394,7 +1394,28 @@ def _coach_intercept(database, user_id, question, context, history, app_config, 
         offered = _human_coach_handoff(database, user_id, question, project_id, take_id)
         if offered:
             return offered, "human_coach_handoff"
+    if user_id:
+        insights = _speaker_insights(database, user_id, question)
+        if insights:
+            return insights, "speaker_insights"
     return None
+
+
+def _speaker_insights(database, user_id, question):
+    """Insights only when asked, in either chat (N691 item 4): worked out now
+    from the speaker's wider record, answered in words."""
+    from services import speaker_insights
+
+    if not speaker_insights.asks_for_insights(question):
+        return None
+    try:
+        text = speaker_insights.answer(database, str(user_id), question)
+    except Exception as error:  # noqa: BLE001 - the usual reply answers instead
+        from services.processing_authorization import rethrow_processing_authorization
+        rethrow_processing_authorization(error)
+        logger.warning("speaker insights unavailable: %s", type(error).__name__)
+        return None
+    return _reply(text, debug={"intent": "speaker_insights"}) if text else None
 
 
 def _human_coach_handoff(database, user_id, question, project_id=None, take_id=None):
