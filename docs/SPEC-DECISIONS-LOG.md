@@ -17935,3 +17935,13 @@ The rules: [AI voice in practice](https://github.com/wilplus/frontend-cursor/blo
 3. **Test answers from the chat as built.** The reply route reads the chat the talk published, else the older blank-setup recipe. The host is the one trying, so the answer shows at once and no draft is kept for them to send. Changing the first taps in Settings saves the chat again.
 
 No migration in this entry. No rules page beyond the one-line changes in the frontend [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md).
+
+**N697 · Require a brief spoken activation baseline in the isolated pilot** (founder, Valence Recogniser chat, 25 November 2026, “It cannot be optional, the baseline invitation” and “And no help offering”).
+
+A person without a baseline completes it during onboarding in the isolated test app. Explain what will be recorded, why, and how it will be used before the speaker starts. The speaker deliberately starts each of two short recordings, one about a quiet or routine situation and one about an energising situation, and briefly reports their felt energy after each. Save each recording and report. After a permission denial, interrupted upload or exit, resume at the first missing step. The app opens only after both recordings and reports are stored, and the collection ends there without an appraisal interview or offer of help. Returning users with a completed baseline enter normally.
+
+Keep the initial baseline, on-demand collection and occasional refresh in separate histories. Collect low- and high-activation recordings first to calibrate vocal cues. Defer comparing excitement and threat within high activation to a later collection.
+
+As an implementation evidence guard, store the invited context separately from the speaker’s actual felt energy for each answer. Coordination permits a local preview with a separate test database and storage. The decision applies only to the isolated test app.
+
+No rules page.
