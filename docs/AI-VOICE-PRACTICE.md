@@ -32,8 +32,11 @@ The lock (flow, words, rules) is
    the routes) and runs the clip job. The walk's own ask
    (`POST …/confidence-practice/<id>/ai-voice`, when the Exercise screen
    opens if no video fits, or when Practise is tapped if one does) is the
-   fallback: it resumes the same practice and finds the same cycle. One clip
-   per practice, reused for every appearance; a clip that fails its check is
+   fallback: it resumes the same practice and finds the same cycle. The
+   walk reuses its clip for every appearance. In chat, a retry that clears
+   the Sniper's cue can have its own opening-emphasis example alongside
+   the walk's clip. The chat example is saved with the retry and its media
+   endpoint checks current access and consent. A clip that fails its check is
    made once more with a new seed, never a third time
    (`AI_VOICE_GENERATION_RETRIES`, 1; founder 2026-10-21, N93), and a failed
    one is never shown. A clip that is `unavailable` once its exercise was

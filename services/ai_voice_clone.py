@@ -202,7 +202,8 @@ def delete(database: Any, user_id: str, *, principal_id: str = "",
     confirm, so the card can say it isn't finished yet."""
     row = store.get_clone(database, user_id) or {}
     voice_id = str(row.get("provider_voice_id") or "")
-    store.save_clone(database, user_id, {"enabled": False, "status": "deleting"})
+    if not store.save_clone(database, user_id, {"enabled": False, "status": "deleting"}):
+        return {"state": "deleting", "error": "storage"}
     from services.ai_voice_clip import erase_clips
     if erase_clips(database, user_id, delete_object=delete_clip_objects):
         return {"state": "deleting", "error": "storage"}

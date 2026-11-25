@@ -884,6 +884,9 @@ test_an_optimistic_whitespace_bubble_can_be_claimed_once,
 test_an_unexpected_accepted_turn_error_is_still_a_renderable_terminal
 O8     -> test_a_turn_is_saved_once_and_its_choices_come_back,
 test_a_completed_walk_closing_cannot_answer_a_later_question",Founder #2: bubbles must never disappear; founder 2026-10-20: the chat keeps the order it shows. The harness is tests/chat_route_fakes.py; what the chat answers is pinned in test_chat_answers.py.
+tests/test_chat_practice.py,Story,"As a speaker correcting a recorded passage, I want the Sniper in the reply and the mic to check my retry before the next example.","O1 The published passage opens the Sniper with its exact words.
+O2 A comparable improved retry advances to an opening-emphasis example.
+O3 An off-cue or unmeasurable retry keeps the same actionable exercise.","O1, O2, O3 -> test_retry_advances_only_after_the_same_passage_lands","Coach chat instruction, 24 November 2026."
 tests/test_chat_provider.py,Story,"As the founder, I can compare and activate Mistral one text surface at a time without moving Whisper, strong reasoning, or an unapproved production path away from OpenAI.","O1  OpenAI remains the default and strong-model calls remain on OpenAI.
 O2  Only an explicitly allowed cheap-model surface selects Mistral.
 O3  Missing Mistral configuration never silently falls back to OpenAI.
@@ -922,6 +925,10 @@ cannot be converted into a pending user turn.
 O3  Only the pending claim that owns the user row can mark it terminal.","O1 -> test_claim_adapter_stamps_only_the_matching_optimistic_user_row_once
 O2 -> test_claim_adapter_refuses_mismatched_or_bot_rows_without_writing
 O3 -> test_completion_adapter_compares_claim_and_pending_state",The database's unique client id and conditional update are the cross-worker arbitration point for a persisted chat retry.
+tests/test_chat_voice_attempt.py,Story,"As a speaker practising in chat, I can hear and revisit the same recording after sending or retrying an edited caption.","O1  The receipt binds the original speech to the exact owner's audio and
+message. Only Send keeps the audio, full evidence, and playback.
+O2  A retry keeps one clip and reads its existing evidence. Other owners
+and erased messages cannot play it or use its analysis.","O1, O2 -> test_prepared_clip_is_attached_once_with_its_own_private_analysis",
 tests/test_chat_widget.py,Story,"As a person in WillpowerLab, I want my own chat on my website, so that anyone there can write to me, I answer as in any chat, and they sign up after asking to get my answer (N591).","O1  Before the visitor writes, with no card in the way, the website chat
 learns only whose chat it is, my welcome and how a visitor may write,
 as my chat's setup says: no fixed questions; a wrong or replaced link,

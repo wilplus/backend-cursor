@@ -320,16 +320,13 @@ def _claim_project_scope(transport, context):
 @require_auth
 def v2_chat_voice():
     """Transcribe a chat answer without creating a Take or writing a turn."""
-    from uuid import uuid4
-
     from routes.v2.voice_notebook import _adapter
+    from services.chat_voice_attempt import hear
     from services.processing_authorization import ProcessingAuthorizationError
-    from services.will_question import QuestionError, hear_answer_words
+    from services.will_question import QuestionError
 
     user_id = str(request.user_id)
     try:
-        adapter = _adapter(user_id)
-        adapter.authorization.require_current(adapter.coordinates.acquisition_principal_id, operation="recording")
         upload = request.files.get("audio")
         if upload is None:
             return jsonify({"code": "EMPTY_AUDIO", "error": "No audio."}), 400
@@ -337,11 +334,19 @@ def v2_chat_voice():
             duration = int(request.form.get("duration_ms") or 0) or None
         except ValueError:
             duration = None
-        text, duration_ms = hear_answer_words(
-            adapter, upload.read(), user_id=user_id, take=str(uuid4()),
-            filename=upload.filename or "answer.webm", duration_ms=duration,
+        project = request.form.get("project_id") or None
+        if project:
+            from routes.v2.common import _is_valid_uuid
+            owner = db.get_owner_principal_for_user(user_id) if _is_valid_uuid(project) else None
+            if not owner or not db.get_project_for_owner(project, str(owner["id"])):
+                return jsonify({"code": "NOT_FOUND", "error": "Project not found."}), 404
+        response = hear(
+            _adapter(user_id), upload.read(), user=user_id,
+            filename=upload.filename or "answer.webm", duration=duration,
+            turn=request.form.get("voice_turn_id"), project=project,
+            practice_reply=request.form.get("chat_practice_reply_id"),
         )
-        return jsonify({"text": text, "duration_ms": duration_ms}), 200
+        return jsonify(response), 200
     except QuestionError as error:
         return jsonify({"code": error.code, "error": str(error)}), error.status
     except ProcessingAuthorizationError as error:
@@ -350,6 +355,51 @@ def v2_chat_voice():
         logger.error("chat answer transcription failed", exc_info=True)
         sentry_sdk.capture_exception(error)
         return jsonify({"code": "V2_ERROR", "error": "Failed to transcribe the answer"}), 500
+
+
+@v2_bp.route("/chat/voice/<turn>", methods=["GET"])
+@require_auth
+def v2_chat_voice_play(turn):
+    from io import BytesIO
+    from flask import send_file
+    from services.lounge_voice_reply import read
+    from services.refusal import Refusal
+
+    try:
+        audio, mime = read(db, str(request.user_id), turn)
+    except Refusal as error:
+        return jsonify(error.body), error.status
+    response = send_file(BytesIO(audio), mimetype=mime, conditional=True)
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
+@v2_bp.route("/chat/voice/<turn>", methods=["POST"])
+@phase1_provider_route
+@llm_limit
+@require_auth
+def v2_chat_voice_attach(turn):
+    from routes.v2.voice_notebook import _adapter
+    from services.lounge_voice_reply import MAX_BYTES, save
+    from services.processing_authorization import ProcessingAuthorizationError
+    from services.refusal import Refusal
+
+    user = str(request.user_id)
+    upload = request.files.get("audio")
+    try:
+        adapter = _adapter(user)
+        adapter.authorization.require_current(adapter.coordinates.acquisition_principal_id, operation="recording")
+        audio = upload.stream.read(MAX_BYTES + 1) if upload else b""
+        payload = save(db, user, turn, audio, upload.mimetype if upload else "",
+                       request.form.get("voice_receipt") or "")
+        return jsonify(payload), 200
+    except Refusal as error:
+        return jsonify(error.body), error.status
+    except ProcessingAuthorizationError as error:
+        return jsonify({"code": error.code, "error": error.message}), error.status
+    except Exception as error:  # noqa: BLE001 — avoid recording audio bytes from a rejected database row.
+        logger.warning("chat voice attachment failed: %s", type(error).__name__)
+        return jsonify({"code": "VOICE_ATTACHMENT_FAILED"}), 503
 
 
 @v2_bp.route("/chat/query", methods=["POST"])

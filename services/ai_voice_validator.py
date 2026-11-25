@@ -214,6 +214,16 @@ def _check_stress(words: list[dict], dbs: list[float], index: int, phrase: str, 
     return {"passed": not failed, "measurements": m, "failed": failed}
 
 
+def opening_contrast(pcm, sample_rate: int, transcript_words: list[dict]) -> float | None:
+    """Relative loudness of the first phrase, using the demo validator's span read."""
+    words = _timed_words({"words": transcript_words})
+    if len(words) < 4:
+        return None
+    phrase = " ".join(word["t"] for word in words[:3])
+    read = _check_stress(words, _frames_db(pcm, sample_rate), 0, phrase, opening_emphasis=True)
+    return read["measurements"].get("contrast_db")
+
+
 def _check_fillers(words: list[dict], language: str) -> dict:
     """Not one hesitation in what was heard in the recording's language."""
     from services.transcript_smoothing import hesitations_for

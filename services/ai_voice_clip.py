@@ -140,7 +140,7 @@ def _recording_language(database: Any, practice: dict, snippet: dict) -> str:
 # ── ensure / generate ────────────────────────────────────────────────────
 
 def ensure(database: Any, practice: dict, *, user_id: str, principal_id: str,
-           run=None, sign=None, queue: Optional[str] = None) -> dict:
+           run=None, sign=None, queue: Optional[str] = None, chat_retry_id: str | None = None) -> dict:
     """Start (once) the clip for this practice and return ``state``.
 
     ``queue`` is the lane the job rides (the pipeline's unless told other);
@@ -152,7 +152,8 @@ def ensure(database: Any, practice: dict, *, user_id: str, principal_id: str,
     cycle, created = store.create_cycle(database, {
         "practice_id": str(practice["id"]), "owner_user_id": str(user_id),
         "take_session_id": practice.get("take_session_id"),
-        "snippet_id": practice.get("snippet_id"), "status": "pending"})
+        "snippet_id": practice.get("snippet_id"), "status": "pending",
+        **({"chat_retry_id": chat_retry_id, "demo": "ai_voice"} if chat_retry_id else {})})
     if cycle is None:
         return {"demo": "video" if _has_video(practice) else "none", "clip": None}
     retry_waiting = cycle.get("failure_kind") == "no_voice" and (
@@ -161,18 +162,18 @@ def ensure(database: Any, practice: dict, *, user_id: str, principal_id: str,
     if retry_waiting and cycle.get("status") == "skipped":
         # It stopped waiting; a voice is now ready or being made.
         store.update_cycle(database, str(cycle["id"]), {"status": "pending"})
-    if created or retry_waiting:
+    if created or retry_waiting or (chat_retry_id and cycle.get("status") == "pending"):
         args = (str(cycle["id"]), principal_id, queue)
         if run is not None:
             run(*args[:2])
         else:
             _start(args, cycle_id=str(cycle["id"]), queue=queue)
-        cycle = store.get_cycle(database, str(practice["id"])) or cycle
+        cycle = store.get_cycle(database, str(practice["id"]), chat_retry_id=chat_retry_id) or cycle
     return state(database, practice, cycle, sign=sign)
 
 
 def prepare_chat_example(database: Any, *, arc_id: str, take_id: str,
-                         snippet_id: str, user_id: str) -> dict:
+                         snippet_id: str, user_id: str, chat_retry_id: str | None = None) -> dict:
     """Use the existing AI-voice lane for an explicit request on a chat clip."""
     from services.ai_voice_clone import available_to
     from services.lounge_clips import owned_chat_moment
@@ -191,6 +192,7 @@ def prepare_chat_example(database: Any, *, arc_id: str, take_id: str,
     principal = principal_for(database, take_id, user_id)
     return {"practice_id": str(practice["id"]), **ensure(
         database, practice, user_id=user_id, principal_id=principal,
+        **({"chat_retry_id": chat_retry_id} if chat_retry_id else {}),
     )}
 
 
@@ -432,9 +434,72 @@ def prewarm(user_id: str, take_session_id: str, snippet_id: str, principal_id: s
         return "failed"
 
 
+def _chat_opening_context(database: Any, take: str, heard: dict) -> tuple[Optional[dict], dict]:
+    from services.ai_voice_language import normalize
+    from services.ai_voice_severity import own_medians, severities, with_opening_emphasis
+    from services.ai_voice_validator import STRESS_MIN_DB
+
+    language = normalize(heard.get("language"))
+    words = str(heard.get("transcript") or "")
+    metrics = heard.get("metrics") or {}
+    contrast = metrics.get("opening_contrast_db")
+    if not language or not words or not isinstance(contrast, (int, float)) or contrast >= STRESS_MIN_DB:
+        return None, {"before": {}}
+    retry = {"transcript": words, "duration_ms": metrics.get("recorded_duration_ms"), "metrics": metrics}
+    medians = own_medians(database.get_snippets_by_session(take) or [], language)
+    scores = severities(retry, medians, sentence=words, language=language)
+    opening = with_opening_emphasis(
+        {"exercise": "stress", "severity_scores": scores, "held_back": []},
+        retry, medians, sentence=words, language=language, requested=True,
+    )
+    context = {"before": metrics, "medians": medians, "sentence": words, "snippet": retry, "language": language}
+    return (opening if opening.get("opening_emphasis") else None), context
+
+
+def chat_opening_selection(database: Any, take: str, heard: dict) -> Optional[dict]:
+    return _chat_opening_context(database, take, heard)[0]
+
+
+def opening_emphasis_improved(previous: dict, heard: dict) -> bool:
+    from services.ai_voice_validator import STRESS_MIN_DB, STRESS_MAX_DB
+
+    before = (previous.get("metrics") or {}).get("opening_contrast_db")
+    after = (heard.get("metrics") or {}).get("opening_contrast_db")
+    return (isinstance(before, (int, float)) and isinstance(after, (int, float))
+            and STRESS_MIN_DB <= after <= STRESS_MAX_DB and after - before >= STRESS_MIN_DB)
+
+
+def chat_retry_evidence(database: Any, practice: dict, owner: str, retry: str) -> Optional[dict]:
+    """Recheck the live source and voice choice whenever its example is used."""
+    from services.chat_practice import authorized_retry
+    from services.ai_voice_clone import available_to, voice_for
+    from services.take_door import practice_allowed
+
+    take = str(practice.get("take_session_id") or "")
+    if not available_to(owner) or not voice_for(database, owner) or not practice_allowed(database, take):
+        return None
+    return authorized_retry(
+        database, owner, retry, str(practice.get("project_id") or ""), take,
+        str(practice.get("snippet_id") or ""),
+    )
+
+
+def _choose_chat_opening(database: Any, practice: dict, cycle: dict, original: dict) -> tuple[Optional[dict], dict]:
+    retry = chat_retry_evidence(database, practice, str(cycle["owner_user_id"]), str(cycle["chat_retry_id"]))
+    if not retry or not original:
+        return None, {"before": {}}
+    principal = principal_for(database, practice.get("take_session_id"), cycle["owner_user_id"])
+    if _practice_allowed(database, principal):
+        return None, {"before": {}}
+    return _chat_opening_context(database, str(practice["take_session_id"]), retry)
+
+
+
 def _choose(database: Any, practice: dict, cycle: dict) -> tuple[Optional[dict], dict]:
     from services.ai_voice_severity import own_medians, select, with_opening_emphasis
     snippet = database.get_snippet_by_id(str(practice.get("snippet_id"))) or {}
+    if cycle.get("chat_retry_id"):
+        return _choose_chat_opening(database, practice, cycle, snippet)
     language = _recording_language(database, practice, snippet)
     take = database.get_snippets_by_session(str(practice.get("take_session_id"))) or []
     medians = own_medians(take, language)
@@ -506,8 +571,8 @@ class _Job:
         self.clock[name] = int((now - self.mark) * 1000)
         self.mark = now
 
-    def update(self, fields: dict) -> None:
-        store.update_cycle(self.db, self.cycle_id, fields)
+    def update(self, fields: dict) -> bool:
+        return store.update_cycle(self.db, self.cycle_id, fields)
 
     def end_clock(self) -> dict[str, int]:
         """Each stage, the job's total, and end to end: since the walk asked
@@ -553,8 +618,9 @@ def generate(cycle_id: str, principal_id: str, queue: Optional[str] = None, *,
                         else "internal",
                         getattr(error, "code", None) or type(error).__name__)
     job.lap("choose_exercise")
+    demo = ("ai_voice" if selection else "none") if cycle.get("chat_retry_id") else demo_for(database, practice, selection)
     job.update({"status": "choosing_exercise",
-                "demo": demo_for(database, practice, selection),
+                "demo": demo,
                 "selection": selection, "metrics_before": context["before"]})
     if selection is None:
         job.update({"status": "skipped", "failure_kind": "no_exercise",
@@ -587,9 +653,10 @@ def _make(job: _Job, selection: dict, context: dict) -> str:
                            provider_usage=job.tools["provider_usage"])
     if refused:
         return job.fail("limits", refused)
-    job.update({"status": "generating", "exercise": selection["exercise"],
-                "failure_kind": None, "prepared_text": request["prepared_text"],
-                "generation_metadata": request["metadata"]})
+    if not job.update({"status": "generating", "exercise": selection["exercise"],
+                       "failure_kind": None, "prepared_text": request["prepared_text"],
+                       "generation_metadata": request["metadata"]}):
+        return "unavailable"
     audio, result, failure = _speak_until_checked(job, voice_id, request, selection, context)
     if failure:
         return job.fail("provider", failure)
@@ -707,19 +774,33 @@ def _speak_until_checked(job: _Job, voice_id: str, request: dict, selection: dic
 
 
 def _keep(job: _Job, audio: bytes, result: dict, selection: dict) -> str:
-    key = f"ai-voice/{job.owner}/{job.practice['id']}/{uuid.uuid4().hex}.mp3"
-    try:
-        bucket = (job.tools["put_object"] or _put)(key, audio)
-    except Exception as error:  # noqa: BLE001 — a clip not stored is not shown
-        _log.warning("ai voice: clip not stored cycle=%s", job.cycle_id, exc_info=True)
-        return job.fail("internal", type(error).__name__)
+    sha = hashlib.sha256(audio).hexdigest()
+    if retry := job.cycle.get("chat_retry_id"):
+        if (_practice_allowed(job.db, job.principal_id)
+                or not chat_retry_evidence(job.db, job.practice, job.owner, str(retry))):
+            return job.fail("no_exercise", "retry_unavailable")
+        storage = {"chat_audio": "\\x" + audio.hex()}
+    else:
+        try:
+            key = f"ai-voice/{job.owner}/{job.practice['id']}/{uuid.uuid4().hex}.mp3"
+            bucket = (job.tools["put_object"] or _put)(key, audio)
+        except Exception as error:  # noqa: BLE001 — a clip not stored is not shown
+            _log.warning("ai voice: clip not stored cycle=%s", job.cycle_id, exc_info=True)
+            return job.fail("internal", type(error).__name__)
+        storage = {"storage_provider": "r2", "bucket": bucket, "storage_key": key}
     job.lap("store")
     job.end_clock()
-    job.update({
-        "status": "completed", "storage_provider": "r2", "bucket": bucket,
-        "storage_key": key, "content_sha256": hashlib.sha256(audio).hexdigest(),
+    published = job.update({
+        "status": "completed", "content_sha256": sha, **storage,
         "duration_ms": int(float(result["measurements"].get("duration_s") or 0) * 1000),
         "latency_ms": job.clock, "ready_at": store._now()})
+    if not published:
+        current = _cycle_by_id(job.db, job.cycle_id)
+        if current and current.get("status") == "completed":
+            return "completed"
+        if current and current.get("status") == "deleted" and storage.get("storage_key"):
+            _delete_object(storage["storage_key"], storage["bucket"], sha)
+        return str((current or {}).get("status") or "unavailable")
     _log.info("ai voice: clip ready cycle=%s exercise=%s total=%dms",
               job.cycle_id, selection["exercise"], job.clock["total"])
     return "completed"
@@ -750,7 +831,8 @@ def _take_saved_at(database: Any, practice: dict) -> Any:
 
 def _cycle_by_id(database: Any, cycle_id: str) -> Optional[dict]:
     try:
-        res = (database.client.table(store.CYCLES).select("*")
+        res = (database.client.table(store.CYCLES)
+               .select("id,owner_user_id,practice_id,status,chat_retry_id,generation_metadata,created_at")
                .eq("id", str(cycle_id)).limit(1).execute())
         rows = list(res.data or [])
         return rows[0] if rows else None
@@ -811,8 +893,12 @@ def state(database: Any, practice: dict, cycle: Optional[dict], *, sign=None) ->
         # rather than the locked screen and then a swap. A coach's video
         # is never displaced. `unavailable` below still falls back.
         demo = "ai_voice"
-    if status == "completed" and cycle.get("storage_key"):
-        url = (sign or _sign)(str(cycle.get("bucket") or ""), str(cycle["storage_key"]))
+    if status == "completed" and (cycle.get("storage_key") or cycle.get("chat_retry_id")):
+        url: str | None
+        if retry := cycle.get("chat_retry_id"):
+            url = f"/v2/user/confidence-practice/{practice['id']}/ai-voice/chat/{retry}/audio"
+        else:
+            url = (sign or _sign)(str(cycle.get("bucket") or ""), str(cycle["storage_key"]))
         displayed = _displayed_cycle(cycle)
         clip = {"state": "ready" if url else "unavailable", "url": url,
                 "duration_ms": cycle.get("duration_ms"),
@@ -957,12 +1043,17 @@ def note_attempts(database: Any, practice: dict, attempts: list[dict]) -> None:
 
 
 def erase_clips(database: Any, owner_user_id: str, *, delete_object=None) -> int:
-    """Every clip of this speaker: the stored audio first, then the row's
-    clip fields. Safe to repeat. Returns how many clips could NOT be
+    """Stop publication before deleting each speaker-owned clip.
+    Safe to repeat. Returns how many clips could NOT be
     removed: their rows keep their coordinates, so the next Delete finds
     them again (a failure is never turned into "gone")."""
+    if not store.retire_chat_cycles(database, owner_user_id):
+        return 1
     left = 0
-    for cycle in store.owner_cycles(database, owner_user_id, limit=1000):
+    for row in store.owner_cycles(database, owner_user_id, limit=1000):
+        cycle = store.retire_cycle(database, str(row["id"]))
+        if not cycle:
+            continue
         key, bucket, sha = cycle.get("storage_key"), cycle.get("bucket"), cycle.get("content_sha256")
         if key and bucket and sha:
             try:
@@ -977,10 +1068,11 @@ def erase_clips(database: Any, owner_user_id: str, *, delete_object=None) -> int
         # The clip and everything describing it: its words, the request
         # and the check. What stays is about the speaker's own tries
         # (metrics before and after, the pick, the outcome), for the picker.
-        store.update_cycle(database, str(cycle["id"]), {
-            "status": "deleted", "storage_key": None, "bucket": None,
+        cleared = store.update_cycle(database, str(cycle["id"]), {
+            "storage_key": None, "bucket": None,
             "content_sha256": None, "prepared_text": None,
-            "generation_metadata": None, "validation": None, "duration_ms": None})
+            "generation_metadata": None, "validation": None, "duration_ms": None}, retired=True)
+        left += int(not cleared)
     return left
 
 

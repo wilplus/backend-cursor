@@ -100,12 +100,28 @@ class _Q:
     def __init__(self, store, name):
         self.s, self.name, self.filters, self.op, self.body = store, name, [], "select", None
         self._limit, self._order = None, None
+        self._negate = False
 
     def select(self, *_a, **_k):
         return self
 
     def eq(self, c, v):
         self.filters.append(lambda r: str(r.get(c)) == str(v))
+        return self
+
+    def neq(self, c, v):
+        self.filters.append(lambda r: r.get(c) != v)
+        return self
+
+    def is_(self, c, v):
+        assert v == "null"
+        negate, self._negate = self._negate, False
+        self.filters.append(lambda r: (r.get(c) is None) != negate)
+        return self
+
+    @property
+    def not_(self):
+        self._negate = True
         return self
 
     def gte(self, c, v):
@@ -128,7 +144,7 @@ class _Q:
         self.op, self.body = "insert", row
         return self
 
-    def update(self, row):
+    def update(self, row, **_kwargs):
         self.op, self.body = "update", row
         return self
 
@@ -140,7 +156,8 @@ class _Q:
         rows = self.s.setdefault(self.name, [])
         if self.op == "insert":
             key = "practice_id" if self.name == "ai_voice_cycles" else "owner_user_id"
-            if any(str(r.get(key)) == str(self.body.get(key)) for r in rows):
+            fields = (key, "chat_retry_id") if self.name == "ai_voice_cycles" else (key,)
+            if any(all(r.get(field) == self.body.get(field) for field in fields) for r in rows):
                 raise RuntimeError("duplicate key")
             row = {"id": str(uuid.uuid4()), "created_at": "2026-10-12T10:00:00+00:00",
                    "generation_attempts": 0, "enabled": True, "status": "pending",
@@ -991,11 +1008,21 @@ def test_delete_removes_the_voice_and_clips_and_is_safe_twice():
         db = _Db(_practice(), _snip(150, pause_ratio=0.02), TAKE)
         _ready_voice(db)
         _run_pipeline(db, db.practice, _Voices(), _heard(0.55, "the window closes once"))
+        old_example = {"id": "old-variant", "owner_user_id": OWNER, "chat_retry_id": "old-retry",
+                       "status": "completed", "chat_audio": "old example"}
+        other_example = {**old_example, "id": "other-variant", "owner_user_id": "another-owner"}
+        db.client.tables["ai_voice_cycles"].extend([
+            old_example, other_example,
+            *[{"id": str(index), "owner_user_id": OWNER, "chat_retry_id": f"retry-{index}",
+               "status": "failed", "created_at": "2026-10-13T10:00:00+00:00"} for index in range(1000)],
+        ])
         voices, removed = _Voices(), []
         out = ai_voice_clone.delete(db, OWNER, provider=voices,
                                     delete_clip_objects=lambda *a: removed.append(a))
         assert out == {"state": "off"} and voices.deleted == ["voice-abc"] and len(removed) == 1
         assert ai_voice_clone.card_state(db, OWNER)["state"] == "off"
+        assert old_example["chat_audio"] is None and old_example["status"] == "deleted"
+        assert other_example["chat_audio"] == "old example"
         assert ai_voice_clone.delete(db, OWNER, provider=voices) == {"state": "off"}
         # A provider that can't confirm is reported, never hidden.
         _ready_voice(db)
@@ -1364,3 +1391,87 @@ def test_a_praised_moments_practice_gets_a_clip(baked):
              "style_changes": []})
         assert sorted((q[1][2], q[1][4]["kind"]) for q in queued) == sorted(
             [(SNIP_ID, "plain"), (corrected, "plain")])
+
+
+def test_chat_opening_variant_keeps_the_existing_demo_and_validates_the_new_cue(monkeypatch):
+    import inspect
+
+    from flask import Flask, request
+
+    from routes.v2 import ai_voice
+    from services import ai_voice_store
+
+    practice = _practice()
+    practice["project_id"] = "project"
+    database = _Db(practice, _snip(210), TAKE)
+    retry = "7cd61b9a-d5ea-4c1a-ada6-551bb5e2eae4"
+    spoken = "Dzisiaj chcę zatwierdzić nasz nowy pilotaż."
+    note = {"transcript": spoken, "language": "pl", "metrics": {
+        "wpm": 142, "pause_ratio": 0.14, "dynamic_db": 9.0, "opening_contrast_db": 0.0,
+        "recorded_duration_ms": 2500,
+    }}
+    monkeypatch.setattr("services.chat_practice.authorized_retry", Mock(return_value=note))
+    monkeypatch.setattr("services.ai_voice_clone.available_to", Mock(return_value=True))
+    monkeypatch.setattr("services.ai_voice_clone.voice_for", Mock(return_value="voice"))
+    monkeypatch.setattr("services.take_door.practice_allowed", Mock(return_value=True))
+    monkeypatch.setattr(ai_voice_clip, "principal_for", Mock(return_value="principal"))
+    monkeypatch.setattr(ai_voice_clip, "_practice_allowed", Mock(return_value=None))
+    key = {"practice_id": practice["id"], "owner_user_id": OWNER}
+    regular, created = ai_voice_store.create_cycle(database, key)
+    assert created
+    variant, created = ai_voice_store.create_cycle(database, {**key, "chat_retry_id": retry})
+    assert created and variant["id"] != regular["id"]
+    repeated, created = ai_voice_store.create_cycle(database, {**key, "chat_retry_id": retry})
+    assert not created and repeated["id"] == variant["id"]
+    assert ai_voice_store.get_cycle(database, practice["id"])["id"] == regular["id"]
+    selection, evidence = ai_voice_clip._choose(database, practice, variant)
+    assert selection["exercise"] == "stress"
+    assert selection["opening_emphasis"] is True
+    assert selection["target_phrase"] == "Dzisiaj chcę zatwierdzić"
+    assert evidence["sentence"] == spoken
+    assert evidence["snippet"]["duration_ms"] == 2500
+
+    queued = Mock()
+    ai_voice_clip.ensure(database, practice, user_id=OWNER, principal_id="principal", chat_retry_id=retry, run=queued)
+    assert queued.call_args.args == (variant["id"], "principal")
+    return_words = [{"word": word, "start": 0.1 + index * 0.39, "end": 0.42 + index * 0.39}
+                    for index, word in enumerate(spoken.split())]
+    times = np.arange(40000) / 16000
+    pcm = (0.13 * np.sin(2 * np.pi * 180 * times)).astype(np.float32)
+    pcm[(times >= return_words[0]["start"]) & (times < return_words[2]["end"])] *= 2
+    voices = _Voices()
+    with _on():
+        assert ai_voice_clip.generate(
+            variant["id"], "principal", database=database, provider=voices,
+            transcribe=lambda _audio, language: {"transcript": spoken, "language": language, "words": return_words},
+            decode=lambda _audio: pcm, provider_usage={"used": 0},
+        ) == "completed"
+        assert ai_voice_clip.generate(variant["id"], "principal", database=database, provider=voices) == "completed"
+    assert voices.spoken == 1
+    assert variant["validation"]["passed"]
+    result = ai_voice_clip.state(database, practice, ai_voice_store.get_cycle(database, practice["id"], chat_retry_id=retry))
+    assert result["clip"]["url"].endswith(f"/chat/{retry}/audio")
+    assert ai_voice_store.read_chat_audio(database, practice["id"], retry) == b"mp3"
+    monkeypatch.setattr(ai_voice, "db", database)
+    monkeypatch.setattr(ai_voice, "_owned_practice", lambda _key: (practice, None))
+    ensure = Mock()
+    monkeypatch.setattr(ai_voice_clip, "ensure", ensure)
+    app = Flask(__name__)
+    with app.test_request_context(method="HEAD"):
+        request.user_id = OWNER
+        response, status = inspect.unwrap(ai_voice.v2_practice_ai_voice)(practice["id"], retry)
+        assert status == 200 and response.get_json()["clip"]["state"] == "ready"
+        ensure.assert_not_called()
+    with app.test_request_context(method="GET", headers={"Range": "bytes=1-2"}):
+        request.user_id = OWNER
+        response = inspect.unwrap(ai_voice.v2_chat_retry_ai_audio)(practice["id"], retry)
+        response.direct_passthrough = False
+        assert (response.status_code, response.get_data()) == (206, b"p3")
+        assert response.headers["Cache-Control"] == "private, no-store"
+    ai_voice_store.retire_cycle(database, variant["id"])
+    with app.test_request_context(method="GET"):
+        request.user_id = OWNER
+        _response, status = inspect.unwrap(ai_voice.v2_chat_retry_ai_audio)(practice["id"], retry)
+        assert status == 404
+    assert not ai_voice_store.update_cycle(database, variant["id"], {"status": "completed"})
+    assert ai_voice_store.get_cycle(database, practice["id"])["id"] == regular["id"]

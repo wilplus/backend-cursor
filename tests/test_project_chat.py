@@ -671,19 +671,65 @@ def test_a_general_improvement_question_cites_the_published_tempo_piece(monkeypa
     monkeypatch.setattr("services.ideal_text_feedback_bake._bake_enabled", lambda: True)
     monkeypatch.setattr("services.tempo_stretch.pick_for_take", lambda *_: {"index": 1, "reading": "rushed"})
 
-    def generate(**kwargs):
-        prompt = json.loads(kwargs["user"])
-        assert words in prompt["passage_to_practise"]["evidence"]
-        return _config_result("Give the two teams a little more room.")
-
-    with patch("services.llm.chat_complete", generate):
+    with patch("services.llm.chat_complete") as generate:
         reply, _ = project_chat.answer(
             database, USER, ARC, "What’s the next thing to improve?", take_session_id=TAKE,
             review_focus={"step": "feedback", "snippet_id": "s2"}, live_take_feedback=True,
         )
+    generate.assert_not_called()
     assert reply["row_metadata"]["coach_moment"] == {
-        "arc_id": ARC, "take_session_id": TAKE, "snippet_id": "tempo", "practise": True,
+        "arc_id": ARC, "take_session_id": TAKE, "snippet_id": "tempo", "practise": True, "intervention": "sniper",
     }
+    assert reply["row_metadata"]["chat_practice"] == {"tool": "sniper", "words": words, "reading": "rushed"}
+
+
+def test_coaching_eval_fixture_reads_only_its_authorised_recordings(monkeypatch):
+    from services.processing_authorization import ProcessingAuthorizationError
+    from services.speaker_lookup import _takes_in_force
+    from tests.evals.surfaces import _synthetic_chat_client
+
+    monkeypatch.setenv("PLF1_PROCESSING_AUTHORIZATION_MODE", "enforce")
+    database = SimpleNamespace(client=_synthetic_chat_client(USER))
+    assert _takes_in_force(database, [{"id": TAKE, "user_id": USER}]) == {TAKE}
+    with pytest.raises(ProcessingAuthorizationError):
+        _takes_in_force(database, [{"id": "foreign-take", "user_id": "another-speaker"}])
+
+
+@pytest.mark.parametrize("question", [
+    "How can I fix this?", "What is the weakest part of this fragment?", "What is the weakest part of this clip?",
+])
+def test_how_to_fix_the_reviewed_passage_ignores_an_offer_from_another_take(monkeypatch, question):
+    from services import chat_practice
+
+    database = FakeDB()
+    earlier_id = "78df3a7f-4d38-42a4-b763-380e688d3ba0"
+    _, earlier = chat_practice.sniper(ARC, "take-a1", "s1", "The old opening.", "rushed", "en")
+    monkeypatch.setattr(chat_practice.Config, "SUPABASE_JWT_SECRET", "unit-test-secret")
+    earlier["arc_id"] = ARC
+    chat_practice.sign_bot_metadata(USER, earlier_id, earlier)
+    database.project_rows.append({"client_id": earlier_id, "role": "bot", "kind": "text",
+                                  "metadata": earlier, "client_created_at": "2026-11-24T14:00:00Z"})
+    database.get_ideal_text_document_core = lambda *_: {"id": "snapshot", "source_take_session_id": TAKE}
+    database.read_ideal_text_feedback_bake = lambda *_: {"changes": [{"one_fix": "tempo"}]}
+    database.get_snippets_by_session = lambda sid: database.snippets[sid]
+    monkeypatch.setattr("services.ideal_text_feedback_bake._bake_enabled", lambda: True)
+    monkeypatch.setattr("services.tempo_stretch.pick_for_take", lambda *_: {"index": 0, "reading": "rushed"})
+
+    reply, _ = project_chat.answer(
+        database, USER, ARC, question, take_session_id=TAKE,
+        review_focus={"step": "feedback", "snippet_id": "s2"},
+    )
+    assert reply["row_metadata"]["coach_moment"]["take_session_id"] == TAKE
+    assert reply["row_metadata"]["coach_moment"]["snippet_id"] == "s2"
+    assert reply["row_metadata"]["chat_practice"]["words"] == database.snippets[TAKE][0]["transcript"]
+    database.snippets[TAKE].append({"id": "unrelated", "transcript": "An unrelated fast moment."})
+    monkeypatch.setattr("services.tempo_stretch.pick_for_take", lambda *_: {"index": 1, "reading": "rushed"})
+    with patch("services.llm.chat_complete", return_value=_config_result("Let's keep the request in one sentence.")):
+        reply, _ = project_chat.answer(
+            database, USER, ARC, question, take_session_id=TAKE,
+            review_focus={"step": "feedback", "snippet_id": "s2"},
+        )
+    assert reply["row_metadata"].get("coach_moment", {}).get("snippet_id") != "unrelated"
 
 
 @pytest.mark.parametrize("model_asks", [True, False])
@@ -829,3 +875,72 @@ def test_a_valid_follow_up_survives_an_extra_model_question():
     with patch("services.llm.chat_complete", return_value=_config_result(words + " Will they be ready?")):
         reply, _ = project_chat.answer(database, USER, ARC, "Can you help me sharpen the ask?", take_session_id=TAKE)
     assert reply["answer"] == words
+
+
+@pytest.mark.parametrize("selection, use_mic", [("The one I just recorded.", True), ("The Take.", False)])
+def test_delivery_question_lets_the_speaker_choose_the_scoped_recording_after_reload(selection, use_mic):
+    database = FakeDB(audience="The board", goal="Approve the plan")
+    database.takes.sessions[ARC][-1]["transcription_language"] = "pl"
+    clip = "fed26b2c-279c-4ee0-8639-03723fc07f14"
+    question = "Do I sound confident when I talk like that?"
+    database.project_rows.extend([
+        {"client_id": "cited", "kind": "text", "role": "bot", "body": "Here is the board pitch.",
+         "metadata": {"arc_id": ARC, "coach_moment": {"arc_id": ARC, "take_session_id": TAKE, "snippet_id": "s2"}},
+         "client_created_at": "2026-11-18T09:10:00Z"},
+        {"client_id": clip, "kind": "text", "role": "user", "body": question,
+         "metadata": {"arc_id": ARC, "take_session_id": TAKE, "voice_clip": True},
+         "client_created_at": "2026-11-18T09:11:00Z"},
+    ])
+    evidence = {"transcript": question, "delivery": "Delivery across the whole passage: natural rise and fall"}
+    with patch("services.lounge_voice_reply.read_analysis", return_value=evidence) as read, \
+            patch("services.llm.chat_complete") as llm:
+        clarification, _ = project_chat.answer(database, USER, ARC, question, take_session_id=TAKE, user_client_id=clip)
+        assert clarification["answer"] == "Do you mean the fragment from your Take or the moment you just recorded?"
+        llm.assert_not_called()
+        database.project_rows.append(
+            {"client_id": "clarification", "kind": "text", "role": "bot", "body": clarification["answer"],
+             "metadata": {**clarification["row_metadata"], "reply_to_client_id": clip},
+             "client_created_at": "2026-11-18T09:12:00Z"}
+        )
+        project_chat.clear_cache()
+        llm.return_value = (SimpleNamespace(text="Your voice lifts naturally at the end.") if use_mic
+                            else _config_result("You leave the decision room to land."))
+        result, _ = project_chat.answer(
+            database, USER, ARC, selection, take_session_id=TAKE,
+            user_client_id="8c66a885-a914-4ac4-bd07-3b859db37751",
+        )
+        prompt = json.loads(llm.call_args.kwargs["user"])
+        assert "TARGET CONTENT LANGUAGE: English (en)" in llm.call_args.kwargs["system"]
+        if use_mic:
+            assert prompt["question"] == question
+            assert prompt["spoken_words"] == question
+            assert "natural rise and fall" in prompt["observations"]
+            assert "board" not in llm.call_args.kwargs["user"]
+            assert result["row_metadata"]["chat_voice_focus"] == {"source": "clip", "turn_id": clip}
+        else:
+            assert "I am speaking to the board" in llm.call_args.kwargs["user"]
+            assert question in llm.call_args.kwargs["user"]
+            assert "natural rise and fall" not in llm.call_args.kwargs["user"]
+        assert not database.global_thread_read
+        read.assert_called_with(database, USER, clip, ARC)
+
+
+def test_chat_recording_can_be_coached_in_an_owned_project_before_its_first_take():
+    database = FakeDB()
+    database.takes.sessions[ARC] = []
+    database.get_owner_principal_for_user = lambda user: {"id": "principal-1"} if user == USER else None
+    database.get_project_for_owner = lambda arc, principal: database.project if (arc, principal) == (ARC, "principal-1") else None
+    clip = "fed26b2c-279c-4ee0-8639-03723fc07f14"
+    question = "Czy brzmię tutaj pewnie?"
+    database.project_rows.append(
+        {"client_id": clip, "kind": "text", "role": "user", "body": question,
+         "metadata": {"arc_id": ARC, "voice_clip": True}, "client_created_at": "2026-11-18T09:11:00Z"}
+    )
+    with patch("services.lounge_voice_reply.read_analysis", return_value={
+        "transcript": question, "delivery": "pace: comfortable", "language": "pl",
+    }), patch("services.llm.chat_complete", return_value=SimpleNamespace(text="Mówisz w spokojnym, równym rytmie.")):
+        result, _ = project_chat.answer(database, USER, ARC, question, user_client_id=clip)
+
+    assert result["answer"] == "Mówisz w spokojnym, równym rytmie."
+    assert result["row_metadata"]["arc_id"] == ARC
+    assert database.takes.sessions[ARC] == []

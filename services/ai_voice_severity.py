@@ -338,7 +338,7 @@ def _selection(problem: str, phrase: Optional[str], scores: dict, snippet: dict,
 
 
 def with_opening_emphasis(selection: dict, snippet: dict, medians: dict, *,
-                          sentence: str, language: str) -> dict:
+                          sentence: str, language: str, requested: bool = False) -> dict:
     """Model early emphasis on a comfortably paced, low-contrast moment.
 
     This adjustment serves the plain AI demo of a whole moment. Reusing the
@@ -348,16 +348,17 @@ def with_opening_emphasis(selection: dict, snippet: dict, medians: dict, *,
 
     if selection["exercise"] not in ("pace", "pause", "stress"):
         return selection
-    if selection["exercise"] == "stress" and not starts_with_greeting(sentence):
+    if selection["exercise"] == "stress" and not (requested or starts_with_greeting(sentence)):
         return selection
     wpm = _metric(snippet, "wpm")
     pause_ratio = _metric(snippet, "pause_ratio")
     stress = selection["severity_scores"]["stress"]
     comfortable_wpm = Config.AI_VOICE_PACE_COMFORT_NO_MEDIAN
     enough_pause = Config.AI_VOICE_PAUSE_FLOOR_RATIO + Config.AI_VOICE_PAUSE_GAP_RATIO
-    if (wpm is None or not 0 < wpm <= comfortable_wpm
-            or pause_ratio is None or not enough_pause <= pause_ratio <= 1
-            or stress <= 0 or stress < Config.AI_VOICE_MIN_SEVERITY
+    if (wpm is None or wpm <= 0
+            or (not requested and (wpm > comfortable_wpm
+                or pause_ratio is None or not enough_pause <= pause_ratio <= 1
+                or stress <= 0 or stress < Config.AI_VOICE_MIN_SEVERITY))
             or (_number(snippet.get("duration_ms")) or 0) <= 0):
         return selection
     spoken_words = word_tokens(sentence)

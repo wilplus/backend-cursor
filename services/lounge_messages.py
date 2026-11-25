@@ -202,6 +202,8 @@ def validate_lounge_batch(body: Any) -> list[dict]:
 
         if metadata and "coach_wording_saved" in metadata:
             raise LoungeValidationError("Saved wording must use the project save action")
+        if metadata and {"chat_practice", "chat_practice_completed", "chat_practice_signature"}.intersection(metadata):
+            raise LoungeValidationError("Chat practice is written by the coach")
 
         cca = m.get("client_created_at")
         if _parse_iso(cca) is None:

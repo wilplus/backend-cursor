@@ -956,6 +956,49 @@ def _scope_question(status: str, language: str) -> str:
     return "Które nagranie mam sprawdzić?" if language == "pl" else "Which recording should we look at?"
 
 
+def _chat_pace_offer(database: Any, user: Any, question: str, language: str,
+                     selected: tuple[Evidence, ...]) -> Optional[dict]:
+    from services import chat_practice
+
+    if not user or not chat_practice.asks_to_correct(question):
+        return None
+    takes = {(source.arc_id, source.take_id) for evidence in selected for source in evidence.sources
+             if source.arc_id and source.take_id}
+    if len(takes) != 1:
+        return None
+    arc, take = next(iter(takes))
+    offer = chat_practice.published_pace(
+        database, str(user), arc, take, language, completed_rows=chat_practice.speaking_rows(database, str(user)),
+    )
+    if offer:
+        text, metadata = offer
+        return {"answer": text, "row_metadata": metadata}
+    return None
+
+
+
+def _practisable_payload(answer: str, parsed: dict, *, question: str, language: str,
+                         selected: tuple[Evidence, ...]) -> dict:
+    from services.chat_practice import asks_to_correct
+
+    if not asks_to_correct(question):
+        return _reply_payload(answer, parsed)
+    sources = {(source.arc_id, source.take_id) for item in selected for source in item.sources
+               if source.arc_id and source.take_id}
+    arc, take = next(iter(sources)) if len(sources) == 1 else ("", "")
+    if wording := coach_wording.proposal(parsed.get("wording"), arc_id=arc, take_id=take):
+        return {"answer": answer, "row_metadata": {coach_wording.META: wording}}
+    return {"answer": ("Podaj kilka słów z fragmentu, który chcesz przećwiczyć."
+                       if language == "pl" else "Give me a few words from the passage you want to practise.")}
+
+
+
+def _brief_general_turn(route: str, question: str, history: Optional[list[dict]]) -> bool:
+    return (route == "general" and not history and len(question.split()) <= 8
+            and not re.search(r"\b(?:i|me|my|mine|mój|moja|moje|mnie)\b|\?", question, re.IGNORECASE))
+
+
+
 def answer(
     database: Any, user_id: Any, question: str, *,
     history: Optional[list[dict]] = None, app_config: Any = None,
@@ -970,12 +1013,8 @@ def answer(
     from services.content_language import complete_in_language, resolve_content_language
     from services.llm_config import SPEC_SPEAKING_COACH, SPEC_SPEAKING_COACH_TAKE
 
-    simple_chat = (
-        route == "general" and not history and len(question.split()) <= 8
-        and not re.search(r"\b(?:i|me|my|mine|mój|moja|moje|mnie)\b|\?", question, re.IGNORECASE)
-    )
     packet, search_question = _context_for_turn(
-        database, None if simple_chat else user_id, question, history or [], app_config,
+        database, None if _brief_general_turn(route, question, history) else user_id, question, history or [], app_config,
     )
     target_language = resolve_content_language(typed_message=question)
     if packet.scope_status in {"clarify", "unavailable"}:
@@ -992,6 +1031,8 @@ def answer(
         scoped=scoped, user_id=str(user_id) if user_id else None,
         comparison_takes=packet.comparison_takes,
     )
+    if pace := _chat_pace_offer(database, user_id, search_question, target_language, selected):
+        return pace, packet.debug(selected_evidence=len(selected))
     context_block = _render_context(packet, selected)
     from services import speaker_memory
     preference = speaker_memory.prompt_block(packet.private_memory)
@@ -1072,7 +1113,7 @@ def answer(
         debug["model_duration_ms"], retrieval_ms,
     )
     return (
-        _reply_payload(clean, parsed),
+        _practisable_payload(clean, parsed, question=question, language=target_language, selected=selected),
         debug,
     )
 

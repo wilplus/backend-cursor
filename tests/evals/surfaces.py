@@ -159,13 +159,29 @@ def _walk_voice(inp: dict) -> Any:
     return compose(inp.get("context") or {}, inp.get("step") or {})
 
 
+def _synthetic_chat_client(user: str):
+    """Supply read-only authority for this fixture's speaker."""
+    principal = f"{user}-principal"
+
+    def rpc(name: str, params: dict):
+        if name == "resolve_phase1_acquisition_principal_v1" and params.get("p_user_id") == user:
+            result: Any = principal
+        elif name == "get_phase1_processing_authorization_v1" and params.get("p_acquisition_principal_id") == principal:
+            result = [{"authorized": True, "pooled_learning_eligible": False, "code": "PROCESSING_AUTHORIZED"}]
+        else:
+            raise ValueError("This evaluation has no matching authorization fixture")
+        return SimpleNamespace(execute=lambda: SimpleNamespace(data=result))
+
+    return SimpleNamespace(rpc=rpc)
+
+
 def _project_chat(inp: dict) -> dict:
     """Answer in a synthetic project using the same scoped context and attachments."""
     from services import project_chat
     from services.lounge_clips import chat_moment_reference
 
     user_id, arc_id, take_id = "project-chat-eval", "eval-project", "eval-take"
-    take = {
+    take: dict[str, Any] = {
         "id": take_id, "user_id": user_id, "arc_id": arc_id,
         "take_index": 1, "status": "completed", "analysis_state": "ready",
         "results_published_at": "2026-11-23T12:00:00Z",
@@ -189,7 +205,7 @@ def _project_chat(inp: dict) -> dict:
             metadata["coach_moment"] = chat_moment_reference(arc_id, take_id, snippet)
         rows.append({"role": turn["role"], "body": turn["body"], "metadata": metadata})
     database = SimpleNamespace(
-        client=None,
+        client=_synthetic_chat_client(user_id),
         get_arc_sessions=lambda arc: [take] if arc == arc_id else [],
         get_snippets_by_sessions=lambda ids: {take_id: snippets} if take_id in ids else {},
         get_coach_snippet_drafts=lambda sid: inp.get("feedback", []) if sid == take_id else [],
@@ -226,7 +242,7 @@ def _speaking_coach(inp: dict) -> str | dict | None:
     user_id = "speaking-coach-eval"
     arc_id = "eval-project"
     take_id = "eval-take"
-    take = {
+    take: dict[str, Any] = {
         "id": take_id,
         "user_id": user_id,
         "arc_id": arc_id,
@@ -237,7 +253,7 @@ def _speaking_coach(inp: dict) -> str | dict | None:
         "created_at": "2026-01-02T00:00:00Z",
         "intake_context": {"topic": inp["project_title"]},
     }
-    transcript = {
+    transcript: dict[str, Any] = {
         "id": take_id,
         "user_id": user_id,
         "slide_transcripts": [{"index": 0, "transcript": inp["transcript"]}],
@@ -267,7 +283,7 @@ def _speaking_coach(inp: dict) -> str | dict | None:
         get_slide_transcripts_many=lambda ids: {id_: transcripts[id_] for id_ in ids if id_ in transcripts},
     )
     database = SimpleNamespace(
-        client=None, takes=takes,
+        client=_synthetic_chat_client(user_id), takes=takes,
         get_snippets_by_sessions=lambda ids: {take_id: snippets} if take_id in ids else {},
         list_active_diagnostic_exercises=lambda: inp.get("exercises", []),
     )
