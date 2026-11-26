@@ -606,6 +606,7 @@ decisions log. The frontend's table is in its own [`README.md`](https://github.c
 | The Feedback walk, the chat with Will and the Lounge | `services/feedback_*`, `services/take_feedback_*`, `services/take_summary.py`, `services/after_take.py`, `services/after_practice.py`, `services/chat_*`, `services/will_*`, `services/willfidence.py`, `services/moment_*`, `services/key_moments.py`, `services/judgement_follow_up.py`, `services/owner_feedback_answers.py`, `services/readout_*`, `services/playback_copy.py`, `services/journey_messages.py`, `services/next_session_icebreaker.py`, `services/directive_suggestions.py`, `services/undermining.py`, `services/feelings.py`, `services/named_emotion.py`, `services/line_bank.py`, `services/line_rotation.py`, `services/lounge_*`, `services/coach_wording.py`, `services/person_asks.py`, `services/v4_*`, `services/rewrite_gate.py`, `services/take_context.py`, `services/noticing_settings.py`, `scripts/noticing_replay.py`, `services/inner_context.py`, `services/verbal_read.py`, `services/prompts/verbal_read.py`, `services/take_progress.py`, `services/tempo_stretch.py`, `services/prompts/tempo_topic.py`, `services/prompts/moment_suggestions.py`, `services/prompts/v4_take_tags.py`, `routes/v2/line_bank.py`, `routes/v2/lounge.py`, `services/walk_voice.py`, `services/prompts/walk_voice.py`, `routes/v2/walk_voice.py`, `services/dad_jokes.py`, `services/bold_voices.py`, `services/product_discovery.py`, `scripts/v4_*` | [frontend `docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) |
 | The chats between people: a colleague's chat and a customer's (N298 to N316), apart from the Lounge, the join link that makes one (N308, N328, N335) and lets a new person in (N471), Block and Report (N466), a Take sent to the people you tick (N470), your chat on any website, which is your own chat on the public side (N567, N591), the questions asked when someone joins, set in Will's chat (N487, N503), and matching someone new after a Take, by what they know and how they speak and progress: an asking chat they open or turn down, whose answer makes the chat (N477, N478, N481, N485, N493, N559), with its off switch in Settings (N465), and every inviter's chat answered by "{name}'s assistant", its recipe, its setup in Will's chat, sensible suggestions, one recording for everyone who asked the same thing and a Take's answers in one place (N578 to N580, N582, N584 to N588), and the blank setup of a host's chat with Will and what a person gets back in it (N612 to N618), a model still learning added to it and taught by the host's own answers, and meeting someone's chat in the chat two people already share (N633), and the feedback walk a person's message gets, said in the host's own words by the host's own ready models (N647), and Developer mode under Build, what Will measures in a host's chat, for the host only (N648), and a Take recorded in the speaking host's chat through the one loop, tagged with it for its speaker only (N648 item 8) | `services/chats.py`, `services/dev_mode.py`, `services/assistants.py`, `services/chat_setup.py`, `services/chat_recipes.py`, `services/chat_replies.py`, `services/chat_builder_reply.py`, `services/chat_voice.py`, `services/chat_suggestions.py`, `services/question_bundles.py`, `services/take_answers.py`, `services/prompts/question_kind.py`, `services/chat_links.py`, `services/chat_widget.py`, `services/membership.py`, `services/people_profiles.py`, `services/chat_safety.py`, `services/take_sends.py`, `services/take_door.py`, `services/join_questions.py`, `services/join_setup.py`, `routes/v2/chats.py`, `services/take_match.py`, `services/take_match_signals.py`, `services/take_match_knowledge.py`, `services/speaking_match.py`, `services/business_community.py`, `routes/v2/take_matches.py` | [frontend `docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md) |
 | The private experiments area in the chat builder: one volunteer's sessions, takes, prompts and interventions | `services/experiment*`, `services/experiments/`, `routes/v2/experiments.py` | No page |
+| Private Speaking Coach baseline (N703) | `services/experiment_baseline*`, `routes/v2/experiment_baseline.py` | [Pilot backend contract](README.md#isolated-baseline-pilot-backend-contract) |
 | Feedback, goals and notifications principles | `services/goal_*`, `services/feedback_digest.py` | [`docs/PRINCIPLES-WIL-74-feedback-goals.md`](docs/PRINCIPLES-WIL-74-feedback-goals.md) |
 | The canonical feedback data contract | `services/feedback_data_contract.py` | [`docs/FEEDBACK_DATA_CONTRACT_MIGRATION_MAP.md`](docs/FEEDBACK_DATA_CONTRACT_MIGRATION_MAP.md) |
 | Speaker memory and longitudinal Speaking Coach | `services/speaker_memory.py`, `services/speaker_lookup.py`, `services/speaking_coach.py`, `services/speaking_coach_scope.py`, `services/speaking_coach_passages.py`, `services/speaker_insights.py` | [`docs/SPEAKER-MEMORY.md`](docs/SPEAKER-MEMORY.md) |
@@ -659,6 +660,94 @@ decisions log. The frontend's table is in its own [`README.md`](https://github.c
 | Running the server: app, settings, deploy and shared helpers | `app.py`, `config.py`, `gunicorn_conf.py`, `Procfile`, `bin/railway-web.sh`, `requirements.txt`, `runtime.txt`, `apt.txt`, `mise.toml`, `nixpacks.toml`, `railpack.json`, `mypy.ini`, `ruff.toml`, `utils/__init__.py`, `utils/ids.py`, `utils/metrics.py`, `services/__init__.py`, `services/utils.py`, `services/warm_connections.py`, `routes/__init__.py`, `routes/v2/__init__.py`, `routes/v2/blueprint.py`, `routes/v2/common.py` | No page |
 | The checks a pull request must pass | `scripts/local_ci.sh`, `scripts/doc_guard.py`, `scripts/app_model_stories.py`, `scripts/complexity_*`, `scripts/except_ratchet*`, `scripts/coverage_floor*`, `scripts/ledger_check.py`, `scripts/rls_guard.py`, `scripts/jwt_secret_check.py`, `scripts/sentry_smoke.py`, `scripts/manual_smoke.py`, `scripts/boot_switch_report.py`, `scripts/phase_a0_diagnostics.py`, `scripts/render_doc_pdf.py` | No page |
 <!-- code-homes:end -->
+
+### Isolated baseline pilot backend contract
+
+The pilot keeps private audio and speaker reports in experiments storage. The existing volunteer key scopes all state
+and cascades account and experiments erasure to these records. The private pilot uses the authenticated routes under
+`/v2/experiments/baseline-pilot`. Responses are private and non-cacheable.
+
+| Route suffix | Request | Response |
+|---|---|---|
+| `GET /` | — | `{entry_allowed, disclosure, runs}` with the latest run or null for each mode. |
+| `POST /runs` | `{mode, request_id, consent, language}` | `{entry_allowed, run}`. `request_id` is a stable UUID per start. Open optional runs resume through GET. |
+| `PUT /runs/:run_id/steps/:step_id/audio` | Multipart `audio`, up to 4 MiB | `{entry_allowed, run}`. The saved step waits for its report. |
+| `GET /runs/:run_id/steps/:step_id/audio` | — | Private audio replay for the authenticated owner, including after reload. |
+| `PUT /runs/:run_id/steps/:step_id/report` | `{felt_energy}` or `{felt_valence}`, one per request | `{entry_allowed, run}` with the first missing answer or completion. |
+| `GET /runs?mode=…&offset=…` | `offset` defaults to zero | `{runs, next_offset}`, newest first within the requested mode. |
+| `DELETE /` | — | `{deleted: true}`. Erases this volunteer's pilot runs, audio, reports and predictions. |
+
+A run has `id, mode, protocol_version, created_at, completed_at, next_step`. A next step has `id, prompt, state`
+with state `record`, `energy`, or `valence`. Each successful write commits in PostgreSQL. On interrupted permission, upload
+or navigation, GET gives the saved step. Replaying an identical PUT is safe after completion, including after a lost
+response. A changed answer to an already saved step returns 409. Text rehearsal uses its own flow.
+Enrollment and writes use the existing account-wide deletion guard and its linked-principal locks. Unexpected
+pilot errors use a generic response and local operation logging with no recording, report body or exception details.
+
+Initial completion is the only way to set `entry_allowed`. The isolated UI presents the disclosure before requesting
+consent and waits for a deliberate mic start on each prompt. The speaker gives two short answers, one about a quiet or
+routine context and one about an energizing context. After each recording they report felt energy, then felt valence.
+The pilot finishes when both recordings and all four reports have been stored. The optional `on_demand` and `refresh` modes
+are independent histories available after initial completion.
+
+The route flag `EXPERIMENT_BASELINE_PILOT_ENABLED` defaults off. Every endpoint also requires the signed-in account
+to appear in `EXPERIMENT_BASELINE_PILOT_USER_IDS`. The operator provides `EXPERIMENT_BASELINE_PILOT_PROTOCOL` as JSON
+with `en` and `pl` protocol objects. GET selects the disclosure by its `language` query parameter and POST selects the
+prompts by its `language` field. Each protocol has a `version`, a `disclosure` with
+`version, recording, purpose, use`, and exactly two distinct `prompts` in order. Each prompt has
+`id, prompt, intended_energy`, with `low` for the quiet or routine invitation and `high` for the energizing invitation.
+The private `partition` field defaults to `calibration`. `intended_valence` can be omitted and never determines the report.
+Starting a run requires `consent` with `participant: true`, a boolean `researcher` choice and the displayed
+disclosure `version`. The run freezes the exact disclosure and prompt set. If the catalogue is unavailable,
+GET can still resume an existing run and returns null for the current disclosure.
+
+Felt energy accepts `low`, `low_to_medium`, `medium`, `medium_to_high`, `high`, and `unsure` for either prompt.
+Felt valence accepts `pleasant`, `unpleasant`, `neutral`, `mixed`, and `unsure` after energy is saved.
+Intended context and held-out membership are fixed separately before the recording. They stay private.
+The first collection supports later calibration of activation from vocal cues. A later collection can support an
+excitement versus threat comparison within high-activation recordings using vocal and verbal cues.
+
+Service-only `predict_held_out` takes a supplied predictor and a model version. It gives the callable the exact
+held-out audio and the other admissible calibration audio from that completed run, limited to audio bytes and MIME.
+Calibration excludes audio reused by any held-out answer in the run. Prediction writes are immutable per answer
+and model version. `scored_prediction` reads the private context and report alongside the committed prediction.
+The pilot exposes no model route to the speaker. Model and isolated app wiring are separate dependencies.
+
+#### Later offline study of activation and felt valence
+
+`services/experiment_baseline_study.py` defines the Polish and English protocol for the later research collection.
+The private pilot collects the two N703 reports per recording. This later study has no chat route.
+
+1. Collect two usable neutral speech recordings per language and recording setup. Ask about a routine and a familiar place.
+   If a recording is unusable, invite a description of an everyday object as a third try. Take only prior recordings whose
+   speaker independently reported both low activation and neutral valence. With fewer than two usable recordings, return
+   insufficient reference data. Use new opportunity and stakes scenarios for the later test.
+2. For each exact recorded span, use the same extractor version and compute person-relative z-scores for median F0 in
+   semitones, F0 spread in semitones, loudness in dB, acoustic speech rate per second, and relative high-frequency energy.
+   Freeze the config before collecting the held-out results. V1 uses positive directions, feature-specific scale floors, an
+   equal-weight mean over at least three reliable features, and a provisional elevation cutoff of one standard unit.
+   Compare that arm against median F0 alone. Both can abstain. The module consumes measured features from an extractor
+   that omits unreliable values. It does not extract features from the waveform.
+3. Commit the research predictions privately against the speaker, recording and exact time span before the self-report.
+   Compare audio-only valence with the same audio plus its transcript and the goal and audience known before the task.
+   Store model and extractor versions with the prediction. Keep the prompt category and the reports separate from both
+   model inputs. The offline functions implement these input boundaries and scoring. They accept supplied predictors.
+4. Ask how activated speaking felt, then how pleasant or unpleasant it felt, before showing any coach response. Keep the
+   original reports, including intermediate activation and neutral, mixed and unsure valence. When deciding whether to
+   offer help, ask whether it helped the goal, got in the way or made no difference. Support helpful activation. Offer
+   reappraisal as an option when the speaker reports high activation and unpleasantness and identifies a concrete obstacle.
+   Record ease of achieving the same goal before and after a retry. Keep activation, valence, ease and the speaker's
+   report of whether the intervention helped as distinct outcomes.
+5. Hold out later sessions for within-speaker checks and whole speakers for generalization. A held-out speaker's prior
+   neutral speech can provide their personal reference only. It is excluded from model or threshold tuning. Report class
+   counts, agreement and coverage separately so abstentions are visible. Include low-activation valence, pleasant responses
+   to stakes prompts, helpful high activation, quoted emotion, weak sound and a confirmed obstacle in the case plan.
+
+Vocal elevation measures change relative to neutral speech. A cardiovascular BPS study would collect separate resting
+physiology and neutral speaking references. Task engagement is evaluated using heart-rate and pre-ejection-period
+reactivity. Cardiac output and total peripheral resistance belong to the separate challenge and threat comparison.
+[Wormwood et al., physiological indices study](https://pmc.ncbi.nlm.nih.gov/articles/PMC6803040/).
+
 
 ## Keeping this page right
 

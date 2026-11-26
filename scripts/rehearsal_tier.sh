@@ -282,8 +282,11 @@ for m in add_runtime_model_config guard_runtime_config_model_keys; do
   sql_file $MODELGATE migrations/$m.sql; sql_file $MODELGATE migrations/$m.sql
 done
 
+"${PSQL[@]}" -d postgres -c "CREATE DATABASE willab_experiment_baseline_rehearsal" >/dev/null
+
 # lane name | DSN variable | database | modules
 LANES=(
+  "private baseline|EXPERIMENT_BASELINE_REHEARSAL_DSN|willab_experiment_baseline_rehearsal|tests/test_experiment_baseline_postgres.py"
   "d5|COACH_GUIDANCE_REHEARSAL_DSN|willab_d3_d5|tests/test_mlc3_coach_inline_authoring_d5_postgres.py"
   "owner-edit authority|CONFIDENT_MOMENT_REHEARSAL_DSN|willab_confident_moment_released|tests/test_owner_edits_use_current_processing_authority_postgres.py"
   "m33|MLC3_REHEARSAL_DSN|willab_m33_rehearsal|tests/test_mlc3_dark_assignments_postgres.py tests/test_mlc3_n1_source_pattern_postgres.py tests/test_rooting_phrase_qualification_postgres.py"

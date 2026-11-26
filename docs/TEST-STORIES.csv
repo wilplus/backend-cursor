@@ -1624,6 +1624,21 @@ to a stored version is refused.
 O3  Browser roles reach neither the table nor the writer functions.","O1 -> test_a_version_is_written_once_with_the_three_texts_and_the_lineage
 O2 -> test_only_the_transcript_arrives_later_and_only_once
 O3 -> test_browser_roles_reach_nothing","Founder 2026-09-29, decision 4 (0399)."
+tests/test_experiment_baseline_postgres.py,Story,"As a volunteer, I resume my isolated baseline where I left it and enter once both recordings and their felt energy are saved.","O1  Lost responses, permission refusal and reload preserve the next step;
+each prompt asks felt energy before felt valence and saved audio
+remains privately replayable during both report steps.
+O2  Only granted accounts enter. Each run has separate, owner-only history.
+O3  A held-out prediction receives only admissible audio. The private
+comparison row appears after the exact prediction is stored.
+O4  A stale signed-in session cannot recreate data after account deletion.","O1 -> test_entry_resumes_after_a_lost_audio_response
+O2 -> test_entry_resumes_after_a_lost_audio_response
+O3 -> test_prediction_inputs_and_labels_have_separate_boundaries
+O4 -> test_deleted_account_cannot_restart_with_an_old_session",
+tests/test_experiment_baseline_study.py,Story,"As a pilot participant, I can report how a recording actually felt without seeing the research prediction first.","O1  Ask energy first, then valence, in either language. Keep support and
+reappraisal tied to the speaker's report and communication goal.
+O2  Compare vocal evidence to suitable prior neutral recordings, withhold
+the prompt and ratings, and keep held-out sessions and speakers separate.","O1 -> test_private_reports_come_one_at_a_time_even_at_low_activation
+O2 -> test_blind_voice_and_multimodal_arms_receive_only_the_exact_span_and_prior_context",
 tests/test_experiments.py,Story,"As a volunteer in the chat builder's experiments area, I keep my own sessions, takes, prompts and interventions, and nobody else's, and I can delete all of it.","O1  The shipped prompts_v1.yaml loads as UTF-8 Polish, and the gate order,
 each cell's reference and the self-rating choices come from that file.
 O2  A session stores my consent and, when I send one, a single PDF page or
