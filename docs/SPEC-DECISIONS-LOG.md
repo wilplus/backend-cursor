@@ -17999,3 +17999,13 @@ The rules: [Feedback walk and chat](https://github.com/wilplus/frontend-cursor/b
 4. **Gone from the app:** Experiments and the AI tile's chat, the calibration chat and retry, the cue numbers, span and pitch fields, pattern names, the clip table, and the coach's queue rows on this screen. “Moments to answer” stays in the coach's queue. “Do you hear it?” stays for other coaches in the coach panel (choice A). Other hosts' AI tile lists their models without a chat. Nothing is dropped from the database.
 
 No migration in this entry. The rules: [AI voice in practice](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md).
+
+**N705 · Each fix is shaped before it is kept** (founder, the Claude Code chat, 26 November 2026, on the plan page: “could you also do this for the sniper … with the rewrite that I can see the rewrite and accept it or correct it … and with the praise … and with the coach video”, then “1. agreed with you 2. agreed with you” and “you can start the development of it”; the ElevenLabs key carries its own cap of 38,000 credits). Extends N704.
+
+1. **More than one fix per clip.** On “What should it get?” the founder picks one or more; “Nothing” stands alone. Each fix is its own label on the clip.
+2. **Sniper is shaped:** the clip plays at a chosen speed with its pitch kept, and a tap between words marks where a pause goes. The speed, the pause places and, where the clip's words allow, the target words per minute are kept with the fix.
+3. **Rephrase is shaped:** the app's better wording for the clip is shown (the one kept with the clip, else one made then, without storing it) and the founder accepts or edits it. Both the kept words and the app's suggestion are saved.
+4. **Next, in order:** AI Audio shaped by the founder saying it the right way (after a test that the delivery can be put on the voice), the acted-mistake library, Coach video recorded and written out. No praise question for now.
+5. **Labels stay independent of the voice provider:** what is kept is the founder's targets and words, never one provider's settings.
+
+No migration in this entry. The rules: [AI voice in practice](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md).
