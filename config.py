@@ -163,6 +163,12 @@ class Config:
     # Speaking Coach handles ordinary conversation. An explicit 0 restores
     # the Master Document fallback for those turns.
     SPEAKING_COACH_ENABLED = _env_flag("SPEAKING_COACH_ENABLED", "1")
+    # The pilot has its own entry and grants. Main chat never checks them.
+    EXPERIMENT_BASELINE_PILOT_ENABLED = _env_flag("EXPERIMENT_BASELINE_PILOT_ENABLED")
+    EXPERIMENT_BASELINE_PILOT_USER_IDS = frozenset(
+        user.strip().lower() for user in os.getenv("EXPERIMENT_BASELINE_PILOT_USER_IDS", "").split(",") if user.strip()
+    )
+    EXPERIMENT_BASELINE_PILOT_PROTOCOL = os.getenv("EXPERIMENT_BASELINE_PILOT_PROTOCOL", "")
     SPEAKING_COACH_CONTEXT_CACHE_TTL_SECONDS = _env_int(
         "SPEAKING_COACH_CONTEXT_CACHE_TTL_SECONDS", 60)
     SPEAKING_COACH_MAX_DB_READS = _env_int("SPEAKING_COACH_MAX_DB_READS", 16)
