@@ -4,6 +4,7 @@ from flask import request
 from routes.admin import require_founder
 from routes.v2.blueprint import v2_bp
 from routes.v2.common import _is_valid_uuid
+from routes.v2.processing_authorization import phase1_provider_route
 from routes.v2.speaking_calibration import _json, _moment
 from services import speaking_patterns
 from services.corpus_coach_queue import queued_corpus_clip
@@ -65,6 +66,31 @@ def v2_speaking_pattern_golden():
     """Your labels against what both pickers served (N702): a report only."""
     from services import picker_golden
     return _json(picker_golden.report(db, str(request.user_id)))
+
+
+@v2_bp.route(_ROOT + "/<source>/<session>/<snippet>/words", methods=["GET"])
+@require_founder
+def v2_speaking_pattern_words(source, session, snippet):
+    """The clip's own words, for Sniper's pause places (N705)."""
+    try:
+        clip = _source_moment(source, session, snippet)
+    except Refusal as error:
+        return _json(error.body, error.status)
+    return _json({"words": speaking_patterns.clip_words(clip)})
+
+
+@v2_bp.route(_ROOT + "/<source>/<session>/<snippet>/rewrite", methods=["GET"])
+@require_founder
+@phase1_provider_route
+def v2_speaking_pattern_rewrite(source, session, snippet):
+    """The clip's words and the app's better wording (N705): the one kept
+    with the clip, else one made now (one provider call, nothing stored)."""
+    try:
+        clip = _source_moment(source, session, snippet)
+    except Refusal as error:
+        return _json(error.body, error.status)
+    return _json({"words": speaking_patterns.clip_words(clip),
+                  "rewrite": speaking_patterns.rewrite_for(clip)})
 
 
 @v2_bp.route(_ROOT + "/<source>/<session>/<snippet>", methods=["GET", "POST", "PUT", "DELETE"])

@@ -3,7 +3,8 @@ STORY: The founder labels exact examples from Takes and Training Corpus in one p
 OUTCOME: Hear the clip before seeing cues, preserve multiple observations and save each match independently of retry outcomes.
 PROVES: test_labels_stay_blind_until_saved, test_error_and_praise_can_coexist_with_distinct_matches,
     test_pattern_routes_require_founder, test_source_gate_rechecks_exact_cohort_and_language,
-    test_removed_sources_are_hidden_from_the_library, test_corpus_observation_cannot_store_a_retry.
+    test_removed_sources_are_hidden_from_the_library, test_corpus_observation_cannot_store_a_retry,
+    test_a_shaped_fix_keeps_its_words_pace_and_pauses, test_the_rewrite_is_the_kept_one_else_made_once.
 """
 from unittest.mock import Mock, patch
 
@@ -117,3 +118,26 @@ def test_corpus_observation_cannot_store_a_retry(client):
         assert response.status_code == 400
     with pytest.raises(Refusal, match="INVALID_MATCH"):
         speaking_patterns.intervention({"intervention": {"retry_outcome": "improved"}}, "error")
+
+
+def test_a_shaped_fix_keeps_its_words_pace_and_pauses():
+    sniper = {"tool": "sniper", "name": "Sniper", "status": "approved", "marks": {"speed": 0.8, "pauses": [4, 2, 4]}}
+    assert speaking_patterns.intervention({"intervention": sniper}, "error")["marks"] == {"speed": 0.8, "pauses": [2, 4]}
+    for bad in ({"speed": 3}, {"pauses": [-1]}, {"pauses": list(range(40))}, {"tempo": 1}):
+        with pytest.raises(Refusal, match="INVALID_MATCH"):
+            speaking_patterns.intervention({"intervention": {**sniper, "marks": bad}}, "error")
+    rewrite = {"tool": "rewrite", "name": "Rephrase", "status": "approved",
+               "text": "We start in March.", "suggested": "We begin in March."}
+    kept = speaking_patterns.intervention({"intervention": rewrite}, "error")
+    assert (kept["text"], kept["suggested"]) == ("We start in March.", "We begin in March.")
+
+
+def test_the_rewrite_is_the_kept_one_else_made_once():
+    clip = {"transcript": "um so we start maybe in March", "say_it_stronger": {"rewrite_your_voice": "We start in March."}}
+    with patch("services.say_it_stronger.generate_say_it_stronger") as made:
+        assert speaking_patterns.rewrite_for(clip) == "We start in March."
+        made.assert_not_called()
+        made.return_value = {"rewrite_your_voice": "So we start in March."}
+        assert speaking_patterns.rewrite_for({"transcript": "um so we start in March"}) == "So we start in March."
+        assert speaking_patterns.rewrite_for({"transcript": "  "}) is None
+        assert made.call_count == 1
