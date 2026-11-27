@@ -76,6 +76,14 @@ class AuthorizedVoiceProvider:
             "practice_example", ["bounded_transcript_sentence"], owner_key,
             lambda: self.client.speak(voice_id=voice_id, body=body))
 
+    def convert(self, *, owner_key: str, voice_id: str, audio: bytes, filename: str,
+                content_type: str) -> Speech:
+        """The founder's own recording, re-voiced in their clone (N706)."""
+        return self._call(
+            "practice_example_revoice", ["speaker_recording_audio"], owner_key,
+            lambda: self.client.convert(voice_id=voice_id, audio=audio, filename=filename,
+                                        content_type=content_type))
+
     def delete_voice(self, *, owner_key: str, voice_id: str) -> None:
         # Deleting sends nothing of the speaker; it still leaves a trace.
         self._call("voice_delete", ["provider_voice_reference"], owner_key,

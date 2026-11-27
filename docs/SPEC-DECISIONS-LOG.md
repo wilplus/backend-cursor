@@ -18009,3 +18009,13 @@ No migration in this entry. The rules: [AI voice in practice](https://github.com
 5. **Labels stay independent of the voice provider:** what is kept is the founder's targets and words, never one provider's settings.
 
 No migration in this entry. The rules: [AI voice in practice](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md).
+
+**N706 · AI Audio is shaped by saying it the right way** (founder, the Claude Code chat, 26–27 November 2026: “I chat with the voice generator and saying certain thing more certain way would guide it”, then “yes” to starting the AI Audio test; the ElevenLabs key keeps its own cap). Extends N705 item 4.
+
+1. **On AI Audio, the founder records the line the way it should sound.** ElevenLabs speech-to-speech re-voices that recording in the founder's own voice copy, so the timing, pauses and emphasis are the founder's. The founder listens, says it again or keeps it.
+2. **Why speech-to-speech:** the text-to-speech model in use (Eleven v4) cannot take a number for pace and reads no pause markup, so a delivery copied as numbers would come out rough.
+3. **Own Takes only.** A corpus clip is a stranger's voice: AI Audio there stays a plain label with no AI version.
+4. **What is kept:** the words the founder said and their pace, never a provider's settings (N705 item 5). The re-voiced audio and the founder's recording are not stored yet.
+5. **Every call is permit-checked and counted against the AI-voice limits** (500 credits held per call) before anything is sent.
+
+No migration in this entry. The rules: [AI voice in practice](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md).

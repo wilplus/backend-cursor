@@ -986,6 +986,8 @@ class Config:
     # AI_VOICE_ALLOWLIST (user ids), when set, narrows it; empty = everyone.
     ELEVENLABS_API_KEY = _secret("ELEVENLABS_API_KEY") or ""
     ELEVENLABS_MODEL_ID = (os.getenv("ELEVENLABS_MODEL_ID") or "eleven_v4").strip()
+    # Speech-to-speech for the founder's Training (N706): a recording re-voiced.
+    ELEVENLABS_STS_MODEL_ID = (os.getenv("ELEVENLABS_STS_MODEL_ID") or "eleven_multilingual_sts_v2").strip()
     ELEVENLABS_API_BASE = (os.getenv("ELEVENLABS_API_BASE")
                            or "https://api.elevenlabs.io").strip().rstrip("/")
     ELEVENLABS_TIMEOUT_SECONDS = _env_int("ELEVENLABS_TIMEOUT_SECONDS", 30)
