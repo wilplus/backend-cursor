@@ -11,6 +11,7 @@ Endpoints (official Python SDK 2.71, 2026-10-05; docs/AI-VOICE-PRACTICE.md):
   DELETE /v1/voices/{voice_id}             delete a clone
   GET    /v1/voices/{voice_id}             does the clone still exist
   POST   /v1/text-to-speech/{voice_id}     generate (JSON body, audio back)
+  POST   /v1/speech-to-speech/{voice_id}   re-voice a recording (multipart, audio back; N706)
   GET    /v1/user/subscription             credits used and the plan's limit
 """
 from __future__ import annotations
@@ -156,6 +157,23 @@ class ElevenLabsClient:
         response = self._send(
             "POST", f"/v1/text-to-speech/{voice_id}",
             params={"output_format": output_format}, json=body,
+            headers={"Accept": "audio/mpeg"})
+        return Speech(
+            audio=response.content,
+            content_type=response.headers.get("content-type", "audio/mpeg"),
+            request_id=response.headers.get("request-id"),
+            character_cost=_int_header(
+                response, "character-cost", "x-character-count"))
+
+    def convert(self, *, voice_id: str, audio: bytes, filename: str, content_type: str,
+                output_format: str = "mp3_44100_128") -> Speech:
+        """Re-voice one recording in ``voice_id``, keeping its timing and
+        emphasis (speech-to-speech; the founder's Training, N706)."""
+        response = self._send(
+            "POST", f"/v1/speech-to-speech/{voice_id}",
+            params={"output_format": output_format},
+            data={"model_id": Config.ELEVENLABS_STS_MODEL_ID, "remove_background_noise": "false"},
+            files=[("audio", (filename, audio, content_type))],
             headers={"Accept": "audio/mpeg"})
         return Speech(
             audio=response.content,

@@ -166,6 +166,35 @@ def reply(database, user, take, snippet, body):
     return {"reply": result.text.strip()}
 
 
+#: Credits held back for one re-voiced clip (about 25 s of speech): the
+#: usage check refuses before the plan's stop line is crossed (N706).
+REVOICE_CREDITS = 500
+
+
+def revoice(database, user, take, snippet, upload):
+    """The founder says the clip the way it should sound; ElevenLabs re-voices
+    that recording in their own voice copy, timing and emphasis kept (N706).
+    Their own Takes only, never a stranger's voice. Nothing is stored."""
+    from services.ai_voice_clip import _practice_allowed, _voices, principal_for
+    from services.ai_voice_clone import available_to, voice_for
+    from services.ai_voice_limits import clip_refusal
+
+    audio = upload.read(3_000_001)
+    if not audio or len(audio) > 3_000_000:
+        raise Refusal("INVALID_AUDIO", "Record the line again, a little shorter.", 400)
+    principal = principal_for(database, take, user)
+    voice_id = voice_for(database, user) if available_to(user) else None
+    if not voice_id or _practice_allowed(database, principal):
+        raise Refusal("VOICE_UNAVAILABLE", "Your AI voice is unavailable for this clip.", 409)
+    if clip_refusal(database, user, characters=REVOICE_CREDITS):
+        raise Refusal("AI_VOICE_LIMIT", "The AI voice has reached a usage limit.", 429)
+    practice = {"take_session_id": take}
+    clip = _voices(database, principal, practice).convert(
+        owner_key=user, voice_id=voice_id, audio=audio,
+        filename=upload.filename or "line.webm", content_type=upload.mimetype or "audio/webm")
+    return clip.audio
+
+
 def example(database, user, take, snippet, body):
     from services.ai_voice_clip import _hear, _practice_allowed, _voices, principal_for
     from services.ai_voice_clone import available_to, voice_for

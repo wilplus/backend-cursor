@@ -57,7 +57,12 @@ def v2_speaking_calibration_coach(take, snippet):
 
     try:
         user, moment = _moment(take, snippet)
-        if upload := request.files.get("audio"):
+        if (upload := request.files.get("audio")) and request.form.get("action") == "revoice":
+            response = send_file(BytesIO(speaking_calibration.revoice(db, user, take, moment, upload)),
+                                 mimetype="audio/mpeg")
+            response.headers["Cache-Control"] = "private, no-store"
+            return response
+        if upload:
             return _json(speaking_calibration.listen(
                 _adapter(user), user, take, moment, upload, check_pace=request.form.get("sniper") == "1",
             ))
