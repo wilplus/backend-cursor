@@ -1,0 +1,18 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.odyssey.txt .
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.15.0 \
+    && pip install --no-cache-dir -r requirements.odyssey.txt
+
+COPY services/odyssey_model.py services/odyssey_runner.py services/audio_metrics.py services/min_content_gate.py services/
+
+ENV ODYSSEY_ARTIFACTS=/opt/odyssey
+RUN python -c 'import os; from pathlib import Path; from services.odyssey_model import prepare_artifacts; prepare_artifacts(Path(os.environ["ODYSSEY_ARTIFACTS"]))' \
+    && rm -rf /root/.cache/huggingface /opt/odyssey/.cache
+
+ENV HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 OMP_NUM_THREADS=3 MKL_NUM_THREADS=3
+
+USER 65534:65534
+CMD ["sh", "-c", "exec gunicorn --bind [::]:${PORT:-8080} --workers 1 --threads 2 --timeout 60 'services.odyssey_runner:create_app()'"]
