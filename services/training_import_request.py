@@ -117,7 +117,7 @@ def start_training_import(database, audio_file: Any, form: Any, *,
                           or form.get("upload_idempotency_key")
                           or "").strip() or None),
         language=language,
-        acted=acted,
+        **({"acted": acted} if acted else {}),
     )
     if not prepared.get("ok"):
         return _not_prepared(prepared)
