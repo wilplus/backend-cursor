@@ -94,7 +94,7 @@ def _start_analysis(prepared: dict, audio_bytes: bytes, filename: str,
 
 def start_training_import(database, audio_file: Any, form: Any, *,
                           uploader_id: Any, topic: str,
-                          language: str) -> tuple[dict, int]:
+                          language: str, acted: Optional[dict] = None) -> tuple[dict, int]:
     """(payload, status) for one validated upload: 202 with the receipt, 200
     for a duplicate, 422 for audio the content gate refused, the
     registration's refusal, or 500."""
@@ -102,6 +102,9 @@ def start_training_import(database, audio_file: Any, form: Any, *,
     from services.training_import import prepare_training_import
     filename = audio_file.filename or "import.webm"
     queue_per_band = _int_or(form.get("queue_per_band"), 5)
+    # Only an acted recording (N708) carries its marker: a coach's import
+    # calls the lane exactly as before.
+    extra: dict[str, Any] = {"acted": acted} if acted else {}
     prepared = prepare_training_import(
         audio_bytes=audio_bytes,
         filename=filename,
@@ -117,6 +120,7 @@ def start_training_import(database, audio_file: Any, form: Any, *,
                           or form.get("upload_idempotency_key")
                           or "").strip() or None),
         language=language,
+        **extra,
     )
     if not prepared.get("ok"):
         return _not_prepared(prepared)

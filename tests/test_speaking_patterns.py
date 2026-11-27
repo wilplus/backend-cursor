@@ -4,7 +4,9 @@ OUTCOME: Hear the clip before seeing cues, preserve multiple observations and sa
 PROVES: test_labels_stay_blind_until_saved, test_error_and_praise_can_coexist_with_distinct_matches,
     test_pattern_routes_require_founder, test_source_gate_rechecks_exact_cohort_and_language,
     test_removed_sources_are_hidden_from_the_library, test_corpus_observation_cannot_store_a_retry,
-    test_a_shaped_fix_keeps_its_words_pace_and_pauses, test_the_rewrite_is_the_kept_one_else_made_once.
+    test_a_shaped_fix_keeps_its_words_pace_and_pauses, test_the_rewrite_is_the_kept_one_else_made_once,
+    test_an_acted_mistake_goes_through_the_import_lane_with_its_state_and_name,
+    test_acted_clips_are_only_the_founders_and_never_a_coach_queue (N708 Act it).
 """
 from unittest.mock import Mock, patch
 
@@ -84,6 +86,7 @@ def test_source_gate_rechecks_exact_cohort_and_language(client):
     headers = {"Authorization": "Bearer test"}
     from routes.v2 import speaking_patterns as routes
     with (patch.object(routes, "queued_corpus_clip", return_value=(MOMENT, imported)) as clip,
+          patch("services.acted_examples.acted_clip", return_value=None),
           patch("routes.v2.coach._rater_language_outcome", return_value=("matched", "pl")) as language,
           patch.object(speaking_patterns, "clip_examples", return_value={"examples": [], "cues": {}}) as load):
         assert client.get(PATH, headers=headers).status_code == 200
@@ -141,3 +144,54 @@ def test_the_rewrite_is_the_kept_one_else_made_once():
         assert speaking_patterns.rewrite_for({"transcript": "um so we start in March"}) == "So we start in March."
         assert speaking_patterns.rewrite_for({"transcript": "  "}) is None
         assert made.call_count == 1
+
+
+ACTED = {"id": TAKE, "source": "training_import", "user_id": "curator", "analysis_state": "ready",
+         "intake_context": {"topic": "Rushing", "language": "pl", "acted": {"state": "tense", "pattern": "Rushing"}}}
+
+
+def test_an_acted_mistake_goes_through_the_import_lane_with_its_state_and_name(client):
+    headers = {"Authorization": "Bearer test"}
+    from io import BytesIO
+    with patch("services.training_import_request.start_training_import",
+               return_value=({"ok": True, "status": "processing", "session_id": TAKE}, 202)) as start:
+        form = {"state": "tense", "pattern": " Rushing ", "language": "pl",
+                "audio_file": (BytesIO(b"voice"), "mistake.webm")}
+        response = client.post("/v2/user/speaking-patterns/acted", headers=headers, data=form,
+                               content_type="multipart/form-data")
+        assert response.status_code == 202
+        kwargs = start.call_args.kwargs
+        assert kwargs["topic"] == "Rushing" and kwargs["language"] == "pl"
+        assert kwargs["acted"] == {"state": "tense", "pattern": "Rushing"}
+        assert kwargs["uploader_id"] == "curator"
+        bad = {**form, "state": "calm", "audio_file": (BytesIO(b"voice"), "mistake.webm")}
+        assert client.post("/v2/user/speaking-patterns/acted", headers=headers, data=bad,
+                           content_type="multipart/form-data").status_code == 400
+        assert start.call_count == 1
+
+
+def test_acted_clips_are_only_the_founders_and_never_a_coach_queue(client):
+    from services import acted_examples
+    from services.training_import_setup import setup_complete
+    assert setup_complete({"topic": "Rushing", "language": "pl"}) is True
+    assert setup_complete(ACTED["intake_context"]) is False
+    database = Mock()
+    database.get_snippet_by_id.return_value = {**MOMENT, "session_id": TAKE, "transcript": "We start in March."}
+    database.v2_get_session_by_id.return_value = ACTED
+    assert acted_examples.acted_clip(database, "curator", TAKE, SNIP)["id"] == SNIP
+    assert acted_examples.acted_clip(database, "someone-else", TAKE, SNIP) is None
+    database.v2_get_session_by_id.return_value = {**ACTED, "intake_context": {"topic": "Talk", "language": "pl"}}
+    assert acted_examples.acted_clip(database, "curator", TAKE, SNIP) is None
+    database.takes.list_training_import_sessions.return_value = [ACTED]
+    database.get_snippets_by_session.return_value = [database.get_snippet_by_id.return_value]
+    with patch("services.corpus_coach_queue.playback_body", return_value={"url": "https://audio"}):
+        listed = acted_examples.listing(database, "curator")
+    assert listed["names"] == ["Rushing"]
+    assert listed["recordings"][0]["clips"] == [{"snippet_id": SNIP, "words": "We start in March.",
+                                                 "duration_ms": 5000, "start_offset_ms": 0, "src": "https://audio"}]
+    headers = {"Authorization": "Bearer test"}
+    from routes.v2 import speaking_patterns as routes
+    with (patch.object(routes, "queued_corpus_clip", return_value=(None, None)),
+          patch.object(acted_examples, "acted_clip", return_value=MOMENT),
+          patch.object(speaking_patterns, "clip_examples", return_value={"examples": [], "cues": {}})):
+        assert client.get(PATH, headers=headers).status_code == 200

@@ -2156,6 +2156,8 @@ def v2_coach_list_training_imports():
                 r.get("intake_context"), dict) else {}
             if ctx.get("archived_at") and not include_archived:
                 continue
+            if ctx.get("acted"):  # the founder's Act it recordings (N708)
+                continue
             out.append({
                 "session_id": r.get("id"),
                 "arc_id": r.get("arc_id"),

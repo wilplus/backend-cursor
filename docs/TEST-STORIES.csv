@@ -4114,7 +4114,9 @@ O10 -> test_selected_take_supplies_passage_and_delivery_without_shared_feedback"
 tests/test_speaking_patterns.py,Story,: The founder labels exact examples from Takes and Training Corpus in one private pattern library.,": Hear the clip before seeing cues, preserve multiple observations and save each match independently of retry outcomes.",": test_labels_stay_blind_until_saved, test_error_and_praise_can_coexist_with_distinct_matches,
 test_pattern_routes_require_founder, test_source_gate_rechecks_exact_cohort_and_language,
 test_removed_sources_are_hidden_from_the_library, test_corpus_observation_cannot_store_a_retry,
-test_a_shaped_fix_keeps_its_words_pace_and_pauses, test_the_rewrite_is_the_kept_one_else_made_once.",
+test_a_shaped_fix_keeps_its_words_pace_and_pauses, test_the_rewrite_is_the_kept_one_else_made_once,
+test_an_acted_mistake_goes_through_the_import_lane_with_its_state_and_name,
+test_acted_clips_are_only_the_founders_and_never_a_coach_queue (N708 Act it).",
 tests/test_state_ratings.py,Story,"As a coach, I want my rating stored exactly as I gave it, blind by default, so that the training data holds only real, independent human judgements.","O1  Never-2: a rating is stored as given and marked blind unless the route
 says the rater saw the machine's read.
 O2  A wrong-typed value (a truthy string, a bool) is refused, never coerced.
