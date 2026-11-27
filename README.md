@@ -607,6 +607,7 @@ decisions log. The frontend's table is in its own [`README.md`](https://github.c
 | The chats between people: a colleague's chat and a customer's (N298 to N316), apart from the Lounge, the join link that makes one (N308, N328, N335) and lets a new person in (N471), Block and Report (N466), a Take sent to the people you tick (N470), your chat on any website, which is your own chat on the public side (N567, N591), the questions asked when someone joins, set in Will's chat (N487, N503), and matching someone new after a Take, by what they know and how they speak and progress: an asking chat they open or turn down, whose answer makes the chat (N477, N478, N481, N485, N493, N559), with its off switch in Settings (N465), and every inviter's chat answered by "{name}'s assistant", its recipe, its setup in Will's chat, sensible suggestions, one recording for everyone who asked the same thing and a Take's answers in one place (N578 to N580, N582, N584 to N588), and the blank setup of a host's chat with Will and what a person gets back in it (N612 to N618), a model still learning added to it and taught by the host's own answers, and meeting someone's chat in the chat two people already share (N633), and the feedback walk a person's message gets, said in the host's own words by the host's own ready models (N647), and Developer mode under Build, what Will measures in a host's chat, for the host only (N648), and a Take recorded in the speaking host's chat through the one loop, tagged with it for its speaker only (N648 item 8) | `services/chats.py`, `services/dev_mode.py`, `services/assistants.py`, `services/chat_setup.py`, `services/chat_recipes.py`, `services/chat_replies.py`, `services/chat_builder_reply.py`, `services/chat_voice.py`, `services/chat_suggestions.py`, `services/question_bundles.py`, `services/take_answers.py`, `services/prompts/question_kind.py`, `services/chat_links.py`, `services/chat_widget.py`, `services/membership.py`, `services/people_profiles.py`, `services/chat_safety.py`, `services/take_sends.py`, `services/take_door.py`, `services/join_questions.py`, `services/join_setup.py`, `routes/v2/chats.py`, `services/take_match.py`, `services/take_match_signals.py`, `services/take_match_knowledge.py`, `services/speaking_match.py`, `services/business_community.py`, `routes/v2/take_matches.py` | [frontend `docs/flows/customer-requests.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/customer-requests.md) |
 | The private experiments area in the chat builder: one volunteer's sessions, takes, prompts and interventions | `services/experiment*`, `services/experiments/`, `routes/v2/experiments.py` | No page |
 | Private Speaking Coach baseline (N703) | `services/experiment_baseline*`, `routes/v2/experiment_baseline.py` | [Pilot backend contract](README.md#isolated-baseline-pilot-backend-contract) |
+| Odyssey clip inference | `services/odyssey_*.py`, `Dockerfile.odyssey`, `requirements.odyssey.txt` | [Odyssey runner](README.md#odyssey-runner) |
 | Feedback, goals and notifications principles | `services/goal_*`, `services/feedback_digest.py` | [`docs/PRINCIPLES-WIL-74-feedback-goals.md`](docs/PRINCIPLES-WIL-74-feedback-goals.md) |
 | The canonical feedback data contract | `services/feedback_data_contract.py` | [`docs/FEEDBACK_DATA_CONTRACT_MIGRATION_MAP.md`](docs/FEEDBACK_DATA_CONTRACT_MIGRATION_MAP.md) |
 | Speaker memory and longitudinal Speaking Coach | `services/speaker_memory.py`, `services/speaker_lookup.py`, `services/speaking_coach.py`, `services/speaking_coach_scope.py`, `services/speaking_coach_passages.py`, `services/speaker_insights.py` | [`docs/SPEAKER-MEMORY.md`](docs/SPEAKER-MEMORY.md) |
@@ -712,6 +713,28 @@ held-out audio and the other admissible calibration audio from that completed ru
 Calibration excludes audio reused by any held-out answer in the run. Prediction writes are immutable per answer
 and model version. `scored_prediction` reads the private context and report alongside the committed prediction.
 The pilot exposes no model route to the speaker. Model and isolated app wiring are separate dependencies.
+
+#### Odyssey runner
+
+`Dockerfile.odyssey` builds the self-hosted CPU scorer as a separate service. It pins the
+[Odyssey WavLM weights](https://huggingface.co/3loi/SER-Odyssey-Baseline-WavLM-Multi-Attributes/tree/00d0e12ba9bf957f5aeea36e8663c8c61cb50ac9)
+and Microsoft WavLM architecture. The image fetches artifacts at build time and
+runs inference offline. Give the service a private address and set
+`ODYSSEY_RUNNER_TOKEN` through its secret settings. Run one process per replica.
+
+An authorized worker can send a bounded, 16 kHz mono PCM WAV to `POST /score`
+with its service credential. The worker supplies only the exact clip. The runner
+has no speaker IDs, database access or audio storage. It returns the model
+version and its raw regression values over the private connection. `GET /health`
+serves once the checkpoint is loaded. The main backend does not start this
+service or import PyTorch during a Take.
+
+The worker that calls it must resolve the recording and confirm its processing
+permission. Use the same model version for the exact Take span and the speaker's
+eligible calm reference. Use both same-language and same-recording-setup
+evidence, and leave the comparison empty when either is missing. Keep model
+values as internal evidence alongside the independent speaker report. This
+runner patch does not connect the live Take or the private baseline pilot.
 
 #### Later offline study of activation and felt valence
 
