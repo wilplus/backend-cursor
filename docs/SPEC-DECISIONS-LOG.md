@@ -18019,3 +18019,9 @@ No migration in this entry. The rules: [AI voice in practice](https://github.com
 5. **Every call is permit-checked and counted against the AI-voice limits** (500 credits held per call) before anything is sent.
 
 No migration in this entry. The rules: [AI voice in practice](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md).
+
+**N707 · Make Odyssey available for personal speaking feedback** (founder, model chat, 26–27 November 2026, “oddysey doesnt have to be private you can launch it to all!” and “we get rid of the Wagner's model”). Extends the availability of spoken baseline comparisons beyond the pilot in N703.
+
+Use the published Odyssey WavLM checkpoint for the speaker’s real Takes. Any speaker may use it for their own recording after giving processing permission and providing a calm reference in the same language and recording setup. Compare a specific clip and its reference with the same model version and keep the result as supporting evidence. The speaker’s own answers describe how speaking felt. The coach still judges blind and the Take flow can finish while this evidence is pending. Research participation and permission to learn from a speaker’s recordings remain separate. Odyssey is the chosen checkpoint for this comparison.
+
+No rules page.
