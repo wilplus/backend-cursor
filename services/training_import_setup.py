@@ -30,6 +30,10 @@ def setup_complete(ctx: Any) -> bool:
     """
     if not isinstance(ctx, dict):
         return False
+    # The founder's acted recordings (N708) are theirs to label in Act it,
+    # never a coach's queue: their set-up is never complete.
+    if ctx.get("acted"):
+        return False
     topic = ctx.get("topic")
     language = ctx.get("language")
     if not isinstance(topic, str) or not topic.strip():

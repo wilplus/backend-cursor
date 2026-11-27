@@ -223,6 +223,15 @@ def import_training_audio(
     )
 
 
+def _acted_fields(acted: Optional[dict]) -> dict:
+    """The founder's own acted mistake (N708): its state and their name for
+    it, kept on the import. An acted import never enters a coach's queue
+    (training_import_setup.setup_complete)."""
+    if not acted:
+        return {}
+    return {"acted": dict(acted)}
+
+
 def _refusal(language: Optional[str]) -> Optional[dict]:
     """Why an import may not start, or None: no language was given (N56.4:
     the language is required)."""
@@ -272,6 +281,7 @@ def prepare_training_import(
     stages: Any = None,
     idempotency_key: Optional[str] = None,
     language: Optional[str] = None,
+    acted: Optional[dict] = None,
 ) -> dict:
     """Everything BEFORE the expensive analysis: gate, store the audio, write
     the session + recording rows, mark the session 'processing'.
@@ -372,6 +382,7 @@ def prepare_training_import(
         session_context["import_key"] = idem
     if language and str(language).strip():
         session_context["language"] = str(language).strip().lower()
+    session_context.update(_acted_fields(acted))
     # Parked so the STATUS poll can report it without re-reading the audio —
     # duration is what separates "never decoded" from "decoded but nothing
     # transcribed" on a zero-piece import (FE §6).

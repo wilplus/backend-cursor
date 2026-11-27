@@ -18025,3 +18025,14 @@ No migration in this entry. The rules: [AI voice in practice](https://github.com
 Use the published Odyssey WavLM checkpoint for the speaker’s real Takes. Any speaker may use it for their own recording after giving processing permission and providing a calm reference in the same language and recording setup. Compare a specific clip and its reference with the same model version and keep the result as supporting evidence. The speaker’s own answers describe how speaking felt. The coach still judges blind and the Take flow can finish while this evidence is pending. Research participation and permission to learn from a speaker’s recordings remain separate. Odyssey is the chosen checkpoint for this comparison.
 
 No rules page.
+
+**N708 · Act it: the founder acts a mistake and labels its fixes** (founder, the Claude Code chat, 27 November 2026: “should there be a record button for the error and for the label of what kind error that is including own name; and the correction; all callobratable … first we care only about the high arousal and negative valence”, then “you can build the interface so at least we can in the meantime get the interventions and moments labelled and afterwards we will connect it all”). Extends N704, N705 and N706.
+
+1. **A third source in Training, Act it,** next to App Takes and Corpus. One action per screen: the state, the mistake's name, the recording, what fixes it, then each fix shaped as in N705 and N706.
+2. **One state for now: tense, high arousal with negative valence.** The founder's label is the truth of an acted clip. Odyssey (N707) reads these clips once it is connected; until then nothing measures valence.
+3. **The mistake's name is the founder's:** one used before, or a new one, kept and offered next time.
+4. **The recording goes through the corpus import lane unchanged:** the content gate, the corpus registration of the processing-authorization path, the transcription and the measurements. Its import is marked acted, so it is never in a coach's queue or the Corpus list. About twelve seconds, one sentence.
+5. **The founder's own acted recordings are kept,** as every corpus import's audio is: their own voice, seen only by them. Nothing plays them to a speaker; that needs its own decision.
+6. **Fixes:** AI Audio (their own voice, so N706 item 3 does not apply), Rephrase, Sniper and Coach video, each kept as a Pattern Library label on the acted clip. Recording the Coach video itself, and keeping the founder's AI Audio recording, come next.
+
+No migration in this entry. The rules: [AI voice in practice](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md).

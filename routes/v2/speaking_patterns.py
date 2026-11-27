@@ -6,7 +6,8 @@ from routes.v2.blueprint import v2_bp
 from routes.v2.common import _is_valid_uuid
 from routes.v2.processing_authorization import phase1_provider_route
 from routes.v2.speaking_calibration import _json, _moment
-from services import speaking_patterns
+from services import acted_examples, speaking_patterns
+from services.rate_limits import whisper_limit
 from services.corpus_coach_queue import queued_corpus_clip
 from services.db import db
 from services.refusal import Refusal
@@ -24,6 +25,9 @@ def _source_moment(source, session, snippet):
     if source != "corpus" or not all(map(_is_valid_uuid, (session, snippet))):
         raise _unavailable()
     clip, imported = queued_corpus_clip(db, snippet)
+    # The founder's own acted recording (N708): labelled as a corpus clip.
+    if not clip and (acted := acted_examples.acted_clip(db, str(request.user_id), session, snippet)):
+        return acted
     if (not clip or str(imported["id"]) != session or
             (imported.get("intake_context") or {}).get("archived_at") or
             type(clip.get("duration_ms")) is not int or clip["duration_ms"] <= 0):
@@ -58,6 +62,27 @@ def v2_speaking_pattern_library():
         "examples": [row for row in rows if eligibility[row["source"], row["session_id"], row["snippet_id"]]],
         "next_offset": offset + len(rows) if len(rows) == speaking_patterns.PAGE_SIZE else None,
     })
+
+
+@v2_bp.route(_ROOT + "/acted", methods=["GET"])
+@require_founder
+def v2_speaking_pattern_acted_list():
+    """Act it (N708): the founder's acted recordings, and the names used."""
+    return _json(acted_examples.listing(db, str(request.user_id)))
+
+
+@v2_bp.route(_ROOT + "/acted", methods=["POST"])
+@require_founder
+@whisper_limit
+def v2_speaking_pattern_acted_record():
+    """Act it (N708): one acted recording (multipart: audio_file, state,
+    pattern, language). The corpus import lane writes it out (202) through
+    the processing-authorization path; GET shows it once ready."""
+    try:
+        return _json(*acted_examples.start(
+            db, str(request.user_id), request.files.get("audio_file"), request.form))
+    except Refusal as error:
+        return _json(error.body, error.status)
 
 
 @v2_bp.route(_ROOT + "/golden", methods=["GET"])

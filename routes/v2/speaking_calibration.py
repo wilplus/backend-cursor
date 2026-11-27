@@ -21,7 +21,13 @@ _PATH = "/user/speaking-calibration/<take>/<snippet>"
 
 def _moment(take, snippet):
     user = str(request.user_id)
-    owned = owned_chat_moment(db, user, take, snippet) if all(map(_is_valid_uuid, (take, snippet))) else None
+    valid = all(map(_is_valid_uuid, (take, snippet)))
+    owned = owned_chat_moment(db, user, take, snippet) if valid else None
+    if not owned and valid:
+        # The founder's own acted recording (N708): AI Audio shapes it too.
+        from services.acted_examples import acted_clip
+        clip = acted_clip(db, user, take, snippet)
+        owned = (None, clip) if clip else None
     if not owned or type(owned[1].get("duration_ms")) is not int or owned[1]["duration_ms"] <= 0:
         raise Refusal("NOT_FOUND", "This moment is unavailable.", 404)
     return user, owned[1]
