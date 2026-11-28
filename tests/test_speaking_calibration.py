@@ -3,7 +3,8 @@ STORY: The founder calibrates an owned speaking moment after listening to it.
 OUTCOME: See acoustic cues after labeling, reuse only the exact retry and run the stronger chat model.
 PROVES: test_review_stays_blind_until_the_founder_labels_the_clip, test_wrong_moment_cannot_use_the_recorded_retry_receipt,
     test_chat_uses_astra_and_only_passes_delivery_descriptions, test_reasoning_model_request_keeps_legacy_chat_parameters_out,
-    test_a_revoice_sends_the_recording_for_speech_to_speech, test_a_revoice_refuses_before_any_provider_call (N706).
+    test_a_revoice_sends_the_recording_for_speech_to_speech, test_a_revoice_refuses_before_any_provider_call (N706),
+    test_a_refused_revoice_says_why (the founder can fix a key, credit or format problem).
 """
 import json
 from types import SimpleNamespace
@@ -97,3 +98,17 @@ def test_a_revoice_refuses_before_any_provider_call():
                 patch("services.ai_voice_limits.clip_refusal", return_value=None):
             voices.convert.return_value = SimpleNamespace(audio=b"mp3")
             assert speaking_calibration.revoice(Mock(), "u", "take", MOMENT, upload) == b"mp3"
+
+
+def test_a_refused_revoice_says_why():
+    from flask import Flask
+
+    from routes.v2.speaking_calibration import _voice_refused
+    from services.elevenlabs_client import VoiceProviderError
+    with Flask(__name__).test_request_context():
+        response, status = _voice_refused(VoiceProviderError("invalid_key", 401, "missing_permissions"))
+        assert status == 503
+        assert "Speech to Speech" in response.get_json()["error"]
+        assert response.get_json()["provider_code"] == "missing_permissions"
+        response, _ = _voice_refused(VoiceProviderError("rejected", 400, "invalid_audio"))
+        assert response.get_json()["error"] == "ElevenLabs refused the recording (invalid_audio)."

@@ -4081,7 +4081,8 @@ C4 -> test_a_note_with_a_number_is_refused_and_the_founder_can_correct_it
 C5 -> test_the_note_and_its_events_go_with_the_account","If removed: Will stops learning about each speaker without anyone noticing (founder 2026-10-20: ""a permanent part of our application"")."
 tests/test_speaking_calibration.py,Story,: The founder calibrates an owned speaking moment after listening to it.,": See acoustic cues after labeling, reuse only the exact retry and run the stronger chat model.",": test_review_stays_blind_until_the_founder_labels_the_clip, test_wrong_moment_cannot_use_the_recorded_retry_receipt,
 test_chat_uses_astra_and_only_passes_delivery_descriptions, test_reasoning_model_request_keeps_legacy_chat_parameters_out,
-test_a_revoice_sends_the_recording_for_speech_to_speech, test_a_revoice_refuses_before_any_provider_call (N706).",
+test_a_revoice_sends_the_recording_for_speech_to_speech, test_a_revoice_refuses_before_any_provider_call (N706),
+test_a_refused_revoice_says_why (the founder can fix a key, credit or format problem).",
 tests/test_speaking_coach.py,Story,"As a speaker, I want Will to remember my speaking work across projects without turning private rows or machine labels into a verdict, so that the conversation feels longitudinal and honest.","O1  Ordinary chat, jokes and short follow-ups use deterministic routing and
 never pay for a separate intent-classifier call.
 O2  Sparse and rich histories both produce a bounded, source-labelled

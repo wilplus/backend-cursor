@@ -1,4 +1,5 @@
 """Founder-only calibration inside the AI Training chat."""
+import logging
 from io import BytesIO
 
 from flask import jsonify, request, send_file
@@ -17,6 +18,28 @@ from services.refusal import Refusal
 from services.will_question import QuestionError
 
 _PATH = "/user/speaking-calibration/<take>/<snippet>"
+logger = logging.getLogger(__name__)
+
+#: What the founder reads when ElevenLabs refuses (their own Training only):
+#: the reason, so a key, credit or format problem can be fixed.
+_VOICE_REASONS = {
+    "missing_key": "ElevenLabs has no key set on the server.",
+    "invalid_key": "ElevenLabs refused the key. Check that the key allows Speech to Speech.",
+    "quota_exceeded": "ElevenLabs has no credits left on this key.",
+    "rate_limited": "ElevenLabs is busy. Try again in a minute.",
+    "not_found": "ElevenLabs can’t find your voice copy.",
+    "outage": "ElevenLabs is unavailable right now.",
+}
+
+
+def _voice_refused(error):
+    """The founder's own Training: say why ElevenLabs refused, never the key."""
+    logger.warning("speaking calibration: ElevenLabs refused kind=%s status=%s code=%s",
+                   error.kind, error.status, error.code)
+    line = _VOICE_REASONS.get(error.kind) or "ElevenLabs refused the recording ({}).".format(
+        error.code or error.status or "no reason given")
+    return _json({"code": "VOICE_UNAVAILABLE", "reason": error.kind, "provider_code": error.code,
+                  "error": line}, 503)
 
 
 def _moment(take, snippet):
@@ -85,5 +108,5 @@ def v2_speaking_calibration_coach(take, snippet):
         return _json(error.body, error.status)
     except (ProcessingAuthorizationError, QuestionError) as error:
         return _json({"code": error.code, "error": str(error)}, error.status)
-    except VoiceProviderError:
-        return _json({"code": "VOICE_UNAVAILABLE", "error": "ElevenLabs is unavailable right now."}, 503)
+    except VoiceProviderError as error:
+        return _voice_refused(error)
